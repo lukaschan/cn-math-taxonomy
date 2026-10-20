@@ -1,0 +1,51 @@
+name: Sync upstream weekly
+
+# Every Monday 03:17 UTC, merge new commits from the upstream repo
+# (xiaoyang111222/cn-math-taxonomy) into this fork's main.
+# Pushing the merged main triggers Cloudflare Pages to redeploy automatically.
+on:
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Merge upstream main
+        id: merge
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/xiaoyang111222/cn-math-taxonomy.git
+          git fetch upstream main
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Already up to date with upstream."
+            exit 0
+          fi
+          if ! git merge upstream/main --no-edit; then
+            git merge --abort || true
+            echo "::error::Merge conflict with upstream — manual sync needed."
+            exit 1
+          fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Validate before pushing
+        if: steps.merge.outputs.changed == 'true'
+        run: python3 scripts/validate.py
+
+      - name: Push (triggers Cloudflare Pages deploy)
+        if: steps.merge.outputs.changed == 'true'
+        run: git push origin main
