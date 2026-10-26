@@ -13,6 +13,13 @@
  *      检查局部图、无横向溢出、无外网脚本/样式/字体/图片请求，并截 06–16；
  *   4) 知识图谱「全部」祖先（cnm_234：默认按年级收起，再展开并对准当前点）、375 宽长名称（cnm_124）
  *      以及 375 宽诊断路径图，截 17–20。
+ *      首页儿童智商测试卡片截 36，诊断结果页底部入口截 37。
+ *      全站顶部横幅：1280 首页顶部截 41-top-banner.png，375 截 42-top-banner-375.png。
+ *      诊断分享图：数学（五年级上册）存 38-share-math.png，英语（现在进行时）存 39-share-en.png，
+ *      375 宽弹层存 40-share-modal-375.png，并用 jsQR 解码图中二维码。
+ *      小学英语图谱与四年级上册诊断截 32–35。初中英语「现在完成时」截 43–44，
+ *      八年级上册英语整册诊断截 45–46。高中英语「虚拟语气」截 51–52，
+ *      选择性必修第一册英语整册诊断截 53–54。
  * 环境变量：CHROME=/path/to/chrome  PORT=8765  DEBUG_PORT=9333
  */
 'use strict';
@@ -24,6 +31,8 @@ const path = require('path');
 const http = require('http');
 const zlib = require('zlib');
 const E = require('../diagnose/engine.js');
+const jsQR = require('./vendor/jsQR.js');
+const SHARE_URL = 'https://math.pansgo.com/?from=share';
 
 const ROOT = path.join(__dirname, '..');
 const OUT = path.join(ROOT, 'screenshots');
@@ -34,6 +43,79 @@ const BASE = 'http://127.0.0.1:' + PORT;
 // 引擎是确定性的：在 Node 里用同一个 seed 预先算出浏览器里会出现哪道题
 const DATA = path.join(ROOT, 'data');
 const readJson = (f) => JSON.parse(fs.readFileSync(path.join(DATA, f), 'utf8'));
+const TOPIC_ROWS = readJson('topics.json');
+const DEP_ROWS = readJson('dependencies.json');
+const QUESTION_ROWS = readJson('questions.json');
+const STD_ITEMS = readJson('cn-curriculum-standards.json').items;
+const N_TOPICS = String(TOPIC_ROWS.filter((t) => String(t.id).startsWith('cnm_')).length);
+const N_EDGES = String(DEP_ROWS.filter((d) => String(d.topicId).startsWith('cnm_')).length);
+const N_QUESTIONS = String(QUESTION_ROWS.filter((q) => String(q.topicId).startsWith('cnm_')).length);
+const N_STANDARDS = String(STD_ITEMS.filter((it) => String(it.id).startsWith('cms-')).length);
+const N_GRADE_CARDS = 14;
+const TOP_BANNER_EXPR = `(() => {
+  const a = document.querySelector('a.top-banner');
+  if (!a) return 'missing';
+  const rel = (a.getAttribute('rel') || '').split(/\\s+/);
+  const text = (a.textContent || '').replace(/\\s+/g, ' ').trim();
+  if (a.getAttribute('href') !== 'https://test.pansgo.com/?from=math-top') return 'href';
+  if (a.target !== '_blank') return 'target';
+  if (rel.indexOf('noopener') < 0) return 'rel';
+  if (text !== '🧠 儿童智商测试') return 'text:' + text;
+  const header = document.querySelector('.site-header');
+  if (!header || (a.compareDocumentPosition(header) & Node.DOCUMENT_POSITION_PRECEDING)) return 'order';
+  const ar = a.getBoundingClientRect();
+  const hr = header.getBoundingClientRect();
+  if (ar.top > 1) return 'not-top:' + Math.round(ar.top);
+  if (ar.bottom > hr.top + 1) return 'overlap-nav';
+  const cs = getComputedStyle(a);
+  const lh = parseFloat(cs.lineHeight);
+  const range = document.createRange();
+  range.selectNodeContents(a);
+  const rh = range.getBoundingClientRect().height;
+  if (!(lh > 0) || rh > lh * 1.45) return 'wrap:' + Math.round(rh) + '/' + lh;
+  const probe = document.createElement('span');
+  probe.textContent = a.textContent;
+  probe.style.cssText = 'position:absolute;left:0;top:0;visibility:hidden;white-space:nowrap;font:' + cs.font;
+  document.body.appendChild(probe);
+  const textW = probe.getBoundingClientRect().width;
+  probe.remove();
+  const innerW = a.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  if (textW > innerW + 1) return 'clip:' + Math.round(textW) + '/' + Math.round(innerW);
+  const navLinks = document.querySelectorAll('.site-nav a');
+  for (let i = 0; i < navLinks.length; i++) {
+    if (navLinks[i].getBoundingClientRect().height + 0.5 < 44) return 'nav-short';
+  }
+  const card = document.querySelector('a.iq-card');
+  if (card && card.getAttribute('href') !== 'https://test.pansgo.com/?from=math-home') return 'card-href';
+  return 'ok';
+})()`;
+const IQ_HOME_EXPR = `(() => {
+  const a = document.querySelector('a.iq-card');
+  if (!a) return 'missing';
+  const rel = (a.getAttribute('rel') || '').split(/\\s+/);
+  const text = a.textContent || '';
+  if (a.getAttribute('href') !== 'https://test.pansgo.com/?from=math-home') return 'href';
+  if (a.target !== '_blank') return 'target';
+  if (rel.indexOf('noopener') < 0) return 'rel';
+  if (text.indexOf('儿童智商测试') < 0 || text.indexOf('找规律 · 补图案 · 空间想象') < 0 || text.indexOf('趣味测评，与数学诊断无关') < 0) return 'text';
+  if (text.indexOf('免费') >= 0 || text.indexOf('分钟') >= 0) return 'promo';
+  return 'ok';
+})()`;
+const IQ_RESULT_EXPR = `(() => {
+  const line = document.getElementById('iq-line');
+  const a = line && line.querySelector('a');
+  if (!line || !a) return 'missing';
+  const page = document.getElementById('root') && document.getElementById('root').lastElementChild;
+  if (!page || page.lastElementChild !== line) return 'not-last';
+  if (a.getAttribute('href') !== 'https://test.pansgo.com/?from=math-result') return 'href';
+  if (a.target !== '_blank') return 'target';
+  if ((a.getAttribute('rel') || '').split(/\\s+/).indexOf('noopener') < 0) return 'rel';
+  const compact = (line.textContent || '').replace(/\\s+/g, '');
+  if (compact !== '做完数学诊断，再测测思维能力？→儿童智商测试') return 'text:' + compact;
+  if (a.textContent !== '儿童智商测试') return 'link-text';
+  return 'ok';
+})()`;
+const DERIVE = TOPIC_ROWS.find((t) => t.name === '导数的概念' && t.grade === 13);
 const GRAPH = E.buildGraph(readJson('topics.json'), readJson('dependencies.json'), readJson('questions.json'));
 function seedFor(topicId, pred) {
   for (let i = 0; i < 60; i++) {
@@ -112,6 +194,97 @@ function pngInk(file, box) {
   }
   return { width, height, orange, blue };
 }
+
+function pngDecode(file) {
+  const buf = fs.readFileSync(file);
+  if (buf.toString('ascii', 1, 4) !== 'PNG') throw new Error('不是 PNG：' + file);
+  let off = 8, width = 0, height = 0, bitDepth = 0, colorType = 0, interlace = 0;
+  const idats = [];
+  while (off + 8 <= buf.length) {
+    const len = buf.readUInt32BE(off);
+    const type = buf.toString('ascii', off + 4, off + 8);
+    const data = buf.subarray(off + 8, off + 8 + len);
+    if (type === 'IHDR') {
+      width = data.readUInt32BE(0);
+      height = data.readUInt32BE(4);
+      bitDepth = data[8];
+      colorType = data[9];
+      interlace = data[12];
+    } else if (type === 'IDAT') idats.push(data);
+    else if (type === 'IEND') break;
+    off += 12 + len;
+  }
+  if (bitDepth !== 8 || interlace !== 0 || (colorType !== 2 && colorType !== 6)) {
+    throw new Error('无法解码 PNG：' + file + ' depth=' + bitDepth + ' color=' + colorType + ' interlace=' + interlace);
+  }
+  const bpp = colorType === 6 ? 4 : 3;
+  const raw = zlib.inflateSync(Buffer.concat(idats));
+  const stride = width * bpp;
+  const rgba = new Uint8ClampedArray(width * height * 4);
+  let pos = 0;
+  let prev = Buffer.alloc(stride);
+  for (let y = 0; y < height; y++) {
+    const filter = raw[pos++];
+    const row = Buffer.alloc(stride);
+    for (let i = 0; i < stride; i++) {
+      const x = raw[pos++];
+      const a = i >= bpp ? row[i - bpp] : 0;
+      const b = prev[i];
+      const c = i >= bpp ? prev[i - bpp] : 0;
+      let v = x;
+      if (filter === 1) v = (x + a) & 255;
+      else if (filter === 2) v = (x + b) & 255;
+      else if (filter === 3) v = (x + ((a + b) >> 1)) & 255;
+      else if (filter === 4) {
+        const p = a + b - c;
+        const pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c);
+        const pr = pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+        v = (x + pr) & 255;
+      }
+      row[i] = v;
+    }
+    prev = row;
+    for (let x = 0; x < width; x++) {
+      const s = x * bpp;
+      const d = (y * width + x) * 4;
+      rgba[d] = row[s];
+      rgba[d + 1] = row[s + 1];
+      rgba[d + 2] = row[s + 2];
+      rgba[d + 3] = bpp === 4 ? row[s + 3] : 255;
+    }
+  }
+  return { width, height, data: rgba };
+}
+function pngRgba(file) { return pngDecode(file); }
+function pngPixel(img, x, y) {
+  const i = (y * img.width + x) * 4;
+  return [img.data[i], img.data[i + 1], img.data[i + 2], img.data[i + 3]];
+}
+function cropRgba(img, box) {
+  const x0 = Math.max(0, box.x), y0 = Math.max(0, box.y);
+  const x1 = Math.min(img.width, box.x + box.w), y1 = Math.min(img.height, box.y + box.h);
+  const w = x1 - x0, h = y1 - y0;
+  const out = new Uint8ClampedArray(w * h * 4);
+  for (let y = 0; y < h; y++) {
+    const src = ((y0 + y) * img.width + x0) * 4;
+    out.set(img.data.subarray(src, src + w * 4), y * w * 4);
+  }
+  return { width: w, height: h, data: out };
+}
+function decodeQr(img) {
+  const boxes = [
+    { x: 48, y: 1500, w: 400, h: 400 },
+    { x: 0, y: img.height - 480, w: 560, h: 480 },
+    { x: 0, y: 0, w: img.width, h: img.height }
+  ];
+  for (let i = 0; i < boxes.length; i++) {
+    const crop = cropRgba(img, boxes[i]);
+    const code = jsQR(crop.data, crop.width, crop.height, { inversionAttempts: 'dontInvert' });
+    if (code && code.data) return code.data;
+  }
+  return null;
+}
+
 function getJson(url) {
   return new Promise((resolve, reject) => {
     http.get(url, (res) => { let b = ''; res.on('data', (c) => (b += c)); res.on('end', () => { try { resolve(JSON.parse(b)); } catch (e) { reject(e); } }); }).on('error', reject);
@@ -223,13 +396,18 @@ async function main() {
       const bad = await assetsOf();
       check(bad.length === 0, label + ' 没有外网 script/link/font/img' + (bad.length ? '：' + bad.join('；') : ''));
     };
+    const checkBanner = async (label) => {
+      const banner = await evalJs(TOP_BANNER_EXPR);
+      check(banner === 'ok', label + ' 顶部横幅（' + banner + '）');
+    };
     const NODE_METRICS_JS = `
-      let tall = 0, spill = 0, uncut = 0, overlap = 0, primary = 0, junior = 0, grades = 0;
+      let tall = 0, spill = 0, uncut = 0, overlap = 0, primary = 0, junior = 0, senior = 0, grades = 0;
       const limit = window.matchMedia('(max-width: 700px)').matches ? 8 : 10;
       const boxes = [];
       cy.nodes().forEach(function (n) {
         if (n.hasClass('primary')) primary++;
         if (n.hasClass('junior')) junior++;
+        if (n.hasClass('senior')) senior++;
         if (n.hasClass('grade')) grades++;
         if (n.height() > 40) tall++;
         const body = n.boundingBox({ includeLabels: false });
@@ -264,7 +442,7 @@ async function main() {
         soft: soft.length ? soft[0].style('line-style') : '',
         hardN: hard.length, softN: soft.length,
         current: cy.nodes('.current').length,
-        primary, junior, grades, tall, spill, uncut, overlap,
+        primary, junior, senior, grades, tall, spill, uncut, overlap,
         wrap: cy.nodes().length ? cy.nodes()[0].style('text-wrap') : ''
       };
     })()`;
@@ -276,7 +454,7 @@ async function main() {
       const soft = cy.edges('.soft');
       const indirect = cy.edges('.indirect');
       return {
-        nodes: cy.nodes().length, primary, junior, grades, tall, spill, uncut, overlap,
+        nodes: cy.nodes().length, primary, junior, senior, grades, tall, spill, uncut, overlap,
         root: cy.nodes('.root').length,
         target: cy.nodes('.target').length,
         rootBorder: cy.nodes('.root').length ? cy.nodes('.root')[0].style('border-width') : '',
@@ -292,7 +470,7 @@ async function main() {
       await waitFor(() => evalJs('document.getElementById("path-cy") && document.getElementById("path-cy").dataset.ready === "1"'), label + ' 路径图', 15000);
       const g = await evalJs(PATH_GRAPH_EXPR);
       check(!g.svg && g.nodes > 0 && g.pathItems > 0, label + ' 有 Cytoscape 路径图和文字路径（' + g.nodes + ' 个点，' + g.pathItems + ' 步）');
-      check(g.primary + g.junior === g.nodes, label + ' 节点按小学/初中区分（小学 ' + g.primary + '，初中 ' + g.junior + '）');
+      check(g.primary + g.junior + g.senior === g.nodes, label + ' 节点按小学/初中/高中区分（小学 ' + g.primary + '，初中 ' + g.junior + '，高中 ' + g.senior + '）');
       check(g.root >= 1 && parseFloat(g.rootBorder) >= 4, label + ' 薄弱根因已高亮');
       check(g.target >= 1, label + ' 标出了目标');
       check(g.hardN === 0 || g.hard === 'solid', label + ' 硬先修实线');
@@ -312,6 +490,7 @@ async function main() {
     check(rows > 100, '开始页渲染了知识点列表（' + rows + ' 行）');
     check(await exists('.chap-head button.primary'), '有「以整章为目标」按钮');
     check(await evalJs('document.querySelector("a.back").getAttribute("href")') === '../explore/', '有返回知识图谱的链接');
+    await checkBanner('诊断开始页 1280');
     await checkPage('诊断开始页 1280');
 
     // 搜索并选目标
@@ -430,6 +609,9 @@ async function main() {
       '演示模式同时出现 掌握（' + await stat('ok') + '）/ 不稳（' + await stat('shaky') + '）/ 薄弱（' + await stat('bad') + '）三种状态');
     check(await exists('#shaky details.topic') && await exists('#path .tag.shaky'), '「不稳」的点单独列出，并出现在学习路径里');
     await shot('03-result.png');
+    const iqResult = await evalJs(IQ_RESULT_EXPR);
+    check(iqResult === 'ok', '诊断结果页底部有儿童智商测试入口（' + iqResult + '）');
+    await shot('37-result-iq.png', '#iq-line', 160);
     await checkPathGraph('演示结果页');
     // 路径图单独存一张便于检查
     await shot('04-graph.png', '#graph', 720);
@@ -442,19 +624,25 @@ async function main() {
     console.log('首页 / 知识图谱');
     await setView(1280, 900);
     await goto(BASE + '/');
-    await waitFor(() => evalJs('document.getElementById("n-topics") && document.getElementById("n-topics").textContent !== "…" && document.querySelectorAll("a.grade-card").length === 9'), '首页统计');
+    await waitFor(() => evalJs('document.getElementById("n-topics") && document.getElementById("n-topics").textContent !== "…" && document.querySelectorAll("a.grade-card").length === ' + N_GRADE_CARDS), '首页统计');
     const stats = await evalJs('[document.getElementById("n-topics").textContent, document.getElementById("n-edges").textContent, document.getElementById("n-questions").textContent, document.getElementById("n-standards").textContent].join(",")');
-    check(stats === '531,909,2271,230', '首页统计来自数据文件（' + stats + '）');
-    check((await evalJs('document.body.innerText')).includes('AI 生成初稿，未经教师审核') && !(await evalJs('document.title')).includes('草稿'), '首页有初稿声明，标题不含「草稿」');
+    check(stats === [N_TOPICS, N_EDGES, N_QUESTIONS, N_STANDARDS].join(','), '首页统计来自数据文件（' + stats + '）');
+    check(!(await evalJs('document.body.innerText')).includes('未经教师审核') && !(await evalJs('document.title')).includes('草稿'), '页脚不含初稿声明，标题不含「草稿」');
     check((await evalJs('document.querySelector("a.grade-card").getAttribute("href")')) === 'explore/?grade=1', '一年级卡片指向知识图谱');
+    const iqHome = await evalJs(IQ_HOME_EXPR);
+    check(iqHome === 'ok', '首页儿童智商测试卡片（' + iqHome + '）');
+    await checkBanner('首页 1280');
     await checkPage('首页 1280');
-    await shot('06-home.png', null, 1400);
+    await shot('06-home.png', null, 1900);
+    await shot('36-home-iq.png', 'a.iq-card', 280);
+    await shot('41-top-banner.png', null, 280);
 
     const checkExplore = async (id, expect) => {
       await goto(BASE + '/explore/#' + encodeURIComponent(id));
       await waitFor(() => evalJs('document.getElementById("cy") && document.getElementById("cy").dataset.ready === "1"'), '局部图 ' + id, 20000);
       const info = await evalJs(EXPLORE_GRAPH_EXPR);
-      check(info.ready !== 'err' && info.nodes > 1 && info.nodes < 80, id + ' 局部图渲染了 ' + info.nodes + ' 个节点（不是全图 531）');
+      check(info.ready !== 'err' && info.nodes > 1 && info.nodes < 80, id + ' 局部图渲染了 ' + info.nodes + ' 个节点（不是全图 ' + N_TOPICS + '）');
+      check(info.primary + info.junior + info.senior === info.nodes, id + ' 节点按学段着色（小学 ' + info.primary + '，初中 ' + info.junior + '，高中 ' + info.senior + '）');
       check(info.meta.indexOf('向上 2 层') >= 0, id + ' 图注含「向上 2 层」（' + info.meta + '）');
       check(info.hash === '#' + id, id + ' 地址栏哈希保持为 ' + info.hash);
       check(info.title.indexOf(expect.title) >= 0 && info.idCode === expect.idCode, id + ' 详情是「' + info.title + '」' + info.idCode);
@@ -470,6 +658,7 @@ async function main() {
     };
 
     await checkExplore('cnm_221', { title: '配方法', idCode: 'cnm_221', diag: 'cnm_221' });
+    await checkBanner('图谱 1280');
     await shot('07-explore-221.png');
     await checkExplore('cnm_p001', { title: '1到5', idCode: 'cnm_p001', diag: 'cnm_p001' });
     await shot('08-explore-p001.png');
@@ -525,10 +714,14 @@ async function main() {
     console.log('窄屏 375');
     await setView(375, 812);
     await goto(BASE + '/');
-    await waitFor(() => evalJs('document.getElementById("n-topics") && document.getElementById("n-topics").textContent === "531"'), '首页 375');
+    await waitFor(() => evalJs('document.getElementById("n-topics") && document.getElementById("n-topics").textContent === ' + JSON.stringify(N_TOPICS)), '首页 375');
+    check((await evalJs(IQ_HOME_EXPR)) === 'ok', '375 首页儿童智商测试卡片');
+    await checkBanner('首页 375');
     await checkPage('首页 375');
-    await shot('10-home-375.png', null, 1500);
+    await shot('10-home-375.png', null, 2900);
+    await shot('42-top-banner-375.png', null, 420);
     await checkExplore('cnm_221', { title: '配方法', idCode: 'cnm_221', diag: 'cnm_221' });
+    await checkBanner('图谱 375');
     await shot('11-explore-221-375.png', null, 1100);
     await checkExplore('cnm_p001', { title: '1到5', idCode: 'cnm_p001', diag: 'cnm_p001' });
     await shot('12-explore-p001-375.png', null, 1100);
@@ -546,6 +739,8 @@ async function main() {
     await shot('19-longname-375.png', '.graph-pane', 760);
     await goto(BASE + '/diagnose/?target=cnm_221&demo=1');
     await waitFor(() => exists('#summary'), '诊断结果页 375');
+    check((await evalJs(IQ_RESULT_EXPR)) === 'ok', '375 诊断结果页底部有儿童智商测试入口');
+    await checkBanner('诊断结果 375');
     await checkPathGraph('375 结果页');
     const choiceH = await evalJs('(() => { const b = document.querySelector("button"); return b ? b.getBoundingClientRect().height : 0; })()');
     check(choiceH >= 44, '按钮触控高度 ≥ 44px（' + Math.round(choiceH) + '）');
@@ -558,6 +753,271 @@ async function main() {
     await waitFor(() => exists('#search'), '诊断开始页 375');
     await checkPage('诊断开始页 375');
     await shot('15-start-375.png', null, 900);
+
+    console.log('高中');
+    await setView(1280, 900);
+    const hsInfo = await checkExplore('cnm_h027', { title: '函数的概念', idCode: 'cnm_h027', diag: 'cnm_h027' });
+    check(hsInfo.senior > 0 && hsInfo.junior > 0, '高中「函数的概念」局部图同时有高中和初中节点');
+    check(await evalJs('!!document.querySelector(".legend .sw-h")'), '知识图谱图例有高中');
+    check((await evalJs('document.querySelector(".pill").textContent')) === '高中', '详情学段标为高中');
+    await shot('21-explore-h027.png');
+    await goto(BASE + '/diagnose/?target=cnm_h027&demo=1');
+    await waitFor(() => exists('#summary'), '高中函数概念诊断结果');
+    const hsPath = await checkPathGraph('高中函数概念');
+    check(hsPath.senior > 0 && hsPath.junior > 0, '高中诊断路径图含高中和初中节点');
+    check(await evalJs('!!document.querySelector(".legend .sw-h")'), '诊断图例有高中');
+    await shot('23-diagnose-h027.png', null, 1400);
+    await shot('24-diagnose-h027-graph.png', '#graph', 720);
+    await goto(BASE + '/diagnose/?grade=' + encodeURIComponent('高一') + '&demo=1&limit=12');
+    await waitFor(() => exists('#chapters'), '高一整体诊断', 20000);
+    check((await evalJs('document.querySelector("#summary h2").textContent')).includes('高一'), '高一（必修第一册）整体诊断');
+    check(await exists('#chapters .chap-sum'), '高一整体诊断有按章汇总');
+    await checkPage('高一整体诊断 1280');
+    await shot('25-diagnose-gaoyi.png', '#summary', 900);
+    await setView(375, 812);
+    await checkExplore('cnm_h027', { title: '函数的概念', idCode: 'cnm_h027', diag: 'cnm_h027' });
+    await shot('22-explore-h027-375.png', null, 1100);
+    await goto(BASE + '/diagnose/?target=cnm_h027&demo=1');
+    await waitFor(() => exists('#summary'), '高中诊断结果 375');
+    await checkPathGraph('高中函数概念 375');
+    await checkPage('高中诊断 375');
+    await shot('26-diagnose-h027-375.png', null, 1100);
+    await evalJs('localStorage.clear()');
+    await goto(BASE + '/diagnose/');
+    await waitFor(() => exists('#grade-card'), '诊断开始页年级卡');
+    await evalJs('(() => { const b = Array.from(document.querySelectorAll("#grade-card .stage-tab")).find((x) => x.textContent === "高二"); if (!b) throw new Error("没有高二"); b.click(); })()');
+    check((await evalJs('document.getElementById("grade-info").textContent')).indexOf('高二（必修第二册）') >= 0, '高二卡片显示必修第二册');
+    check(await evalJs('!Array.from(document.querySelectorAll("#grade-card .stage-tab")).some((b) => b.textContent === "上册" || b.textContent === "下册")'), '高中整体诊断不提供上下册');
+    await checkPage('高二诊断开始 375');
+    await shot('27-diagnose-gaoer-375.png', '#grade-card', 520);
+
+    console.log('选择性必修');
+    if (!DERIVE) throw new Error('找不到「导数的概念」');
+    await setView(1280, 900);
+    const derInfo = await checkExplore(DERIVE.id, { title: '导数的概念', idCode: DERIVE.id, diag: DERIVE.id });
+    check(derInfo.senior > 0, '「导数的概念」局部图含高中节点');
+    check((await evalJs('document.body.innerText')).indexOf('选必二 · 选择性必修第二册') >= 0, '导数页标明选择性必修第二册');
+    await shot('28-explore-der.png');
+    await goto(BASE + '/diagnose/?grade=' + encodeURIComponent('选必二') + '&demo=1&limit=12');
+    await waitFor(() => exists('#chapters'), '选必二整体诊断', 20000);
+    check((await evalJs('document.querySelector("#summary h2").textContent')).indexOf('选必二') >= 0, '选必二（选择性必修第二册）整体诊断');
+    check(await exists('#chapters .chap-sum'), '选必二整体诊断有按章汇总');
+    await checkPage('选必二整体诊断 1280');
+    await shot('30-diagnose-xuanbi2.png', '#summary', 900);
+    await setView(375, 812);
+    await checkExplore(DERIVE.id, { title: '导数的概念', idCode: DERIVE.id, diag: DERIVE.id });
+    check((await evalJs('document.body.innerText')).indexOf('选择性必修第二册') >= 0, '375 导数页仍标明选必二');
+    await checkPage('导数概念 375');
+    await shot('29-explore-der-375.png', null, 1100);
+    await goto(BASE + '/diagnose/?grade=' + encodeURIComponent('选必二') + '&demo=1&limit=12');
+    await waitFor(() => exists('#chapters'), '选必二整体诊断 375', 20000);
+    check((await evalJs('document.querySelector("#summary h2").textContent')).indexOf('选择性必修第二册') >= 0, '375 选必二整体诊断');
+    await checkPage('选必二整体诊断 375');
+    await shot('31-diagnose-xuanbi2-375.png', null, 1100);
+    await evalJs('localStorage.clear()');
+    await goto(BASE + '/diagnose/');
+    await waitFor(() => exists('#grade-card'), '诊断开始页选必二');
+    await evalJs('(() => { const b = Array.from(document.querySelectorAll("#grade-card .stage-tab")).find((x) => x.textContent === "选必二"); if (!b) throw new Error("没有选必二"); b.click(); })()');
+    check((await evalJs('document.getElementById("grade-info").textContent')).indexOf('选必二（选择性必修第二册）') >= 0, '选必二卡片显示选择性必修第二册');
+    check(await evalJs('!Array.from(document.querySelectorAll("#grade-card .stage-tab")).some((b) => b.textContent === "上册" || b.textContent === "下册")'), '选必二整体诊断不提供上下册');
+    check(await evalJs('Array.from(document.querySelectorAll("#grade-card .stage-tab")).some((b) => b.textContent === "整册")'), '选必二范围是整册');
+
+    console.log('小学英语');
+    const ing = TOPIC_ROWS.find((t) => String(t.name).indexOf('现在进行时') >= 0 && String(t.id).startsWith('cne_p'));
+    if (!ing) throw new Error('找不到「现在进行时」');
+    await setView(1280, 900);
+    const ingInfo = await checkExplore(ing.id, { title: '现在进行时', idCode: ing.id, diag: ing.id });
+    check(String(ing.id).startsWith('cne_p'), '现在进行时示例仍是小学节点');
+    check(ingInfo.primary > 0 && ingInfo.junior >= 1 && ingInfo.senior === 0, '现在进行时局部图以小学为主，并连到初中后续（小学 ' + ingInfo.primary + '，初中 ' + ingInfo.junior + '）');
+    check((await evalJs('location.search')).indexOf('subject=english') >= 0, '英语知识点自动带上 subject=english');
+    check((await evalJs('document.querySelector("a.diag-btn").getAttribute("href")')).indexOf('subject=english') >= 0, '英语诊断按钮带上学科');
+    await checkBanner('英语图谱 1280');
+    const switchH = await evalJs('(() => { const a = document.querySelector(".subject-link"); return a ? a.getBoundingClientRect().height : 0; })()');
+    check(switchH >= 44, '学科切换触控高度 ≥ 44px（' + Math.round(switchH) + '）');
+    await shot('32-explore-ing.png');
+    await setView(375, 812);
+    await checkExplore(ing.id, { title: '现在进行时', idCode: ing.id, diag: ing.id });
+    await checkBanner('英语图谱 375');
+    await checkPage('现在进行时 375');
+    await shot('33-explore-ing-375.png', null, 1100);
+    await setView(1280, 900);
+    await goto(BASE + '/diagnose/?subject=english&grade=' + encodeURIComponent('四上') + '&demo=1&limit=12');
+    await waitFor(() => exists('#chapters'), '四年级上册英语整体诊断', 20000);
+    check((await evalJs('document.querySelector("#summary h2").textContent')).indexOf('四年级上册') >= 0, '四年级上册英语整体诊断标题');
+    check((await evalJs(IQ_RESULT_EXPR)) === 'ok', '英语诊断结果页也有儿童智商测试入口');
+    await checkBanner('英语诊断 1280');
+    check(await exists('#chapters .chap-sum'), '四年级上册英语整体诊断有按章汇总');
+    check((await evalJs('document.body.innerText')).indexOf('配方法') < 0, '英语整册诊断不混入数学知识点');
+    await checkPage('四年级上册英语 1280');
+    await shot('34-diagnose-en-g4.png', '#summary', 900);
+    await setView(375, 812);
+    await goto(BASE + '/diagnose/?subject=english&grade=' + encodeURIComponent('四上') + '&demo=1&limit=12');
+    await waitFor(() => exists('#chapters'), '四年级上册英语整体诊断 375', 20000);
+    check((await evalJs('document.querySelector("#summary h2").textContent')).indexOf('四年级上册') >= 0, '375 四年级上册英语整体诊断');
+    await checkBanner('英语诊断 375');
+    await checkPage('四年级上册英语 375');
+    await shot('35-diagnose-en-g4-375.png', null, 1100);
+
+    console.log('初中英语');
+    const perfect = TOPIC_ROWS.find((t) => t.name === '现在完成时' && String(t.id).startsWith('cne_j'));
+    if (!perfect) throw new Error('找不到「现在完成时」');
+    await setView(1280, 900);
+    const perfInfo = await checkExplore(perfect.id, { title: '现在完成时', idCode: perfect.id, diag: perfect.id });
+    check(perfInfo.junior > 0, '现在完成时局部图含初中节点（初中 ' + perfInfo.junior + '，高中 ' + perfInfo.senior + '）');
+    const stageTabs = await evalJs('Array.from(document.querySelectorAll("#stage-tabs [data-stage]:not([hidden])")).map((b) => b.textContent).join(",")');
+    check(stageTabs === '全部,小学,初中,高中', '英语图谱学段是全部/小学/初中/高中（' + stageTabs + '）');
+    const gradeOpts = await evalJs('Array.from(document.querySelectorAll("#fGrade option")).map((o) => o.textContent).join(",")');
+    check(gradeOpts.indexOf('九年级') >= 0 && gradeOpts.indexOf('高一') < 0 && gradeOpts.indexOf('一年级') < 0 && gradeOpts.indexOf('必修第一册') >= 0 && gradeOpts.indexOf('选择性必修第四册') >= 0, '英语年级从三年级筛到高中，不用「高一」（' + gradeOpts + '）');
+    const legendH = await evalJs('(() => { const li = document.querySelector(".legend li:has(.sw-h)"); if (!li) return "missing"; return getComputedStyle(li).display; })()');
+    const legendJ = await evalJs('(() => { const li = document.querySelector(".legend li:has(.sw-j)"); if (!li) return "missing"; return getComputedStyle(li).display; })()');
+    check(legendH !== 'none' && legendH !== 'missing' && legendJ !== 'none', '英语图谱图例同时保留初中和高中（初中 ' + legendJ + '，高中 ' + legendH + '）');
+    await shot('43-explore-perfect.png');
+    await setView(375, 812);
+    await checkExplore(perfect.id, { title: '现在完成时', idCode: perfect.id, diag: perfect.id });
+    await checkPage('现在完成时 375');
+    await shot('44-explore-perfect-375.png', null, 1100);
+    await setView(1280, 900);
+    await goto(BASE + '/diagnose/?subject=english&grade=' + encodeURIComponent('八上') + '&demo=1&limit=12');
+    await waitFor(() => exists('#chapters'), '八年级上册英语整体诊断', 20000);
+    check((await evalJs('document.querySelector("#summary h2").textContent')).indexOf('八年级上册') >= 0, '八年级上册英语整体诊断标题');
+    check((await evalJs(IQ_RESULT_EXPR)) === 'ok', '初中英语诊断结果页也有儿童智商测试入口');
+    await checkBanner('初中英语诊断 1280');
+    check(await exists('#chapters .chap-sum'), '八年级上册英语整体诊断有按章汇总');
+    check((await evalJs('document.body.innerText')).indexOf('配方法') < 0, '初中英语整册诊断不混入数学知识点');
+    check((await evalJs('document.body.innerText')).indexOf('小学、初中和高中用不同颜色') >= 0, '英语结果页图例说明含小学、初中和高中');
+    await checkPage('八年级上册英语 1280');
+    await shot('45-diagnose-en-g8.png', '#summary', 900);
+    await setView(375, 812);
+    await goto(BASE + '/diagnose/?subject=english&grade=' + encodeURIComponent('八上') + '&demo=1&limit=12');
+    await waitFor(() => exists('#chapters'), '八年级上册英语整体诊断 375', 20000);
+    check((await evalJs('document.querySelector("#summary h2").textContent')).indexOf('八年级上册') >= 0, '375 八年级上册英语整体诊断');
+    await checkBanner('初中英语诊断 375');
+    await checkPage('八年级上册英语 375');
+    await shot('46-diagnose-en-g8-375.png', null, 1100);
+
+    console.log('高中英语');
+    const subj = TOPIC_ROWS.find((t) => t.name === '虚拟语气' && String(t.id).startsWith('cne_h'));
+    if (!subj) throw new Error('找不到「虚拟语气」');
+    await setView(1280, 900);
+    const subInfo = await checkExplore(subj.id, { title: '虚拟语气', idCode: subj.id, diag: subj.id });
+    check(subInfo.senior > 0 && subInfo.junior > 0, '虚拟语气局部图含高中和初中（高中 ' + subInfo.senior + '，初中 ' + subInfo.junior + '）');
+    check((await evalJs('document.body.innerText')).indexOf('高一') < 0, '虚拟语气页不把英语册次写成高一');
+    check((await evalJs('document.body.innerText')).indexOf('选择性必修第二册') >= 0, '虚拟语气页写明选择性必修第二册');
+    await checkPage('虚拟语气 1280');
+    await shot('51-explore-subjunctive.png');
+    await setView(375, 812);
+    await checkExplore(subj.id, { title: '虚拟语气', idCode: subj.id, diag: subj.id });
+    await checkPage('虚拟语气 375');
+    await shot('52-explore-subjunctive-375.png', null, 1100);
+    await setView(1280, 900);
+    await goto(BASE + '/diagnose/?subject=english&grade=' + encodeURIComponent('选必一') + '&demo=1&limit=12');
+    await waitFor(() => exists('#chapters'), '选择性必修第一册英语整体诊断', 20000);
+    check((await evalJs('document.querySelector("#summary h2").textContent')).indexOf('选必一') >= 0, '选必一英语整体诊断标题');
+    check((await evalJs('document.body.innerText')).indexOf('配方法') < 0, '高中英语整册诊断不混入数学知识点');
+    check((await evalJs('document.body.innerText')).indexOf('People of Achievement') >= 0, '选必一诊断按单元汇总');
+    check(await evalJs('!Array.from(document.querySelectorAll("#grade-card .stage-tab")).some((b) => b.textContent === "上册" || b.textContent === "下册")'), '选必一英语不提供上下册');
+    await checkPage('选必一英语 1280');
+    await shot('53-diagnose-en-xuanbi1.png', '#summary', 900);
+    await setView(375, 812);
+    await goto(BASE + '/diagnose/?subject=english&grade=' + encodeURIComponent('选必一') + '&demo=1&limit=12');
+    await waitFor(() => exists('#chapters'), '选择性必修第一册英语整体诊断 375', 20000);
+    check((await evalJs('document.querySelector("#summary h2").textContent')).indexOf('选必一') >= 0, '375 选必一英语整体诊断');
+    await checkPage('选必一英语 375');
+    await shot('54-diagnose-en-xuanbi1-375.png', null, 1100);
+
+    console.log('分享图');
+    const shareUi = () => evalJs(`(() => {
+      const img = document.getElementById('share-preview');
+      const dl = document.getElementById('share-download');
+      const hint = document.getElementById('share-hint');
+      const visible = (el) => !!(el && el.getClientRects().length);
+      return {
+        tag: img ? img.tagName : '',
+        src: img && img.src ? img.src.slice(0, 5) : '',
+        w: img ? img.naturalWidth : 0,
+        h: img ? img.naturalHeight : 0,
+        download: visible(dl),
+        downloadName: dl ? (dl.getAttribute('download') || '') : '',
+        hint: visible(hint),
+        hintText: hint ? (hint.textContent || '').trim() : ''
+      };
+    })()`);
+    const saveShareImage = async (file) => {
+      await waitFor(() => evalJs('(() => { const img = document.getElementById("share-preview"); return !!(img && img.complete && img.naturalWidth === 1080 && img.naturalHeight === 1920); })()'), '分享图尺寸 ' + file, 10000);
+      const b64 = await evalJs(`(async () => {
+        const img = document.getElementById('share-preview');
+        const blob = await (await fetch(img.src)).blob();
+        const bytes = new Uint8Array(await blob.arrayBuffer());
+        let binary = '';
+        const chunk = 0x4000;
+        for (let i = 0; i < bytes.length; i += chunk) {
+          binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + chunk, bytes.length)));
+        }
+        return btoa(binary);
+      })()`);
+      fs.writeFileSync(path.join(OUT, file), Buffer.from(b64, 'base64'));
+      console.log('  分享图 screenshots/' + file);
+    };
+    const assertSharePng = (file) => {
+      const img = pngRgba(path.join(OUT, file));
+      check(img.width === 1080 && img.height === 1920, file + ' 是 1080×1920');
+      const px = pngPixel(img, 80, 40);
+      check(px[0] < 80 && px[1] > 80 && px[1] < 170 && px[2] > 70 && px[2] < 160, file + ' 页头是站点青色');
+      const decoded = decodeQr(img);
+      check(decoded === SHARE_URL, file + ' 二维码内容是分享链接（' + decoded + '）');
+    };
+
+    await setView(1280, 900);
+    await goto(BASE + '/diagnose/?grade=' + encodeURIComponent('五上') + '&demo=1');
+    await waitFor(() => exists('#btn-share'), '数学结果页分享按钮', 20000);
+    check((await evalJs('document.getElementById("btn-share").textContent')) === '生成分享图', '按钮文案是生成分享图');
+    const qrSrc = await evalJs(`document.querySelector('script[src$="qrcode.js"]').getAttribute('src')`);
+    check(qrSrc === '../assets/vendor/qrcode.js', '二维码脚本是本地相对路径（' + qrSrc + '）');
+    await checkPage('数学分享结果页 1280');
+    await click('#btn-share');
+    await waitFor(() => exists('#share-preview'), '数学分享弹层', 10000);
+    const mathUi = await shareUi();
+    check(mathUi.tag === 'IMG', '桌面预览是 img');
+    check(mathUi.src === 'blob:' || mathUi.src === 'data:', '桌面预览地址可长按保存（' + mathUi.src + '）');
+    check(mathUi.download && mathUi.downloadName === '知识图谱诊断分享.png', '1280 宽显示下载图片');
+    check(!mathUi.hint, '1280 宽不提示长按保存');
+    const mathModel = await evalJs('window.__shareModel');
+    check(mathModel && mathModel.siteName === '中小学·高中知识图谱' && mathModel.subject === '数学' && String(mathModel.scope).indexOf('五年级上册') >= 0 && mathModel.spotKind === 'chapter', '数学分享范围是五年级上册（' + JSON.stringify(mathModel && { scope: mathModel.scope, subject: mathModel.subject, spotKind: mathModel.spotKind }) + '）');
+    check(mathModel && mathModel.spots.length >= 1 && mathModel.spots.length <= 3, '数学分享列出 1–3 个章节');
+    check(mathModel && mathModel.roots.length >= 1 && mathModel.roots.length <= 2, '数学分享有 1–2 个根因');
+    check(JSON.stringify(mathModel).indexOf('付费') < 0 && JSON.stringify(mathModel).indexOf('姓名') < 0, '分享内容不含付费或姓名');
+    await saveShareImage('38-share-math.png');
+    assertSharePng('38-share-math.png');
+
+    await setView(375, 812);
+    await sleep(200);
+    const phoneUi = await shareUi();
+    check(phoneUi.tag === 'IMG' && (phoneUi.src === 'blob:' || phoneUi.src === 'data:'), '375 预览仍是可保存的 img');
+    check(!phoneUi.download, '375 宽隐藏下载图片');
+    check(phoneUi.hint && phoneUi.hintText === '长按图片保存', '375 宽提示长按图片保存（' + phoneUi.hintText + '）');
+    await checkPage('分享弹层 375');
+    await shot('40-share-modal-375.png', null, 812, { beyond: false });
+
+    await setView(1280, 900);
+    await goto(BASE + '/diagnose/?subject=english&target=cne_p148&demo=1');
+    await waitFor(() => exists('#btn-share'), '英语结果页分享按钮', 20000);
+    check((await evalJs('document.querySelector("#summary h2").textContent')).indexOf('现在进行时') >= 0, '英语现在进行时结果页');
+    await checkPage('英语分享结果页 1280');
+    await click('#btn-share');
+    await waitFor(() => exists('#share-preview'), '英语分享弹层', 10000);
+    const enModel = await evalJs('window.__shareModel');
+    check(enModel && enModel.subject === '英语' && String(enModel.scope).indexOf('现在进行时') >= 0 && enModel.spotKind === 'topic', '英语分享范围是现在进行时（' + JSON.stringify(enModel && { scope: enModel.scope, subject: enModel.subject, spotKind: enModel.spotKind, spots: (enModel.spots || []).length, roots: (enModel.roots || []).length }) + '）');
+    check(enModel && enModel.spots.length >= 1 && enModel.spots.length <= 3 && enModel.roots.length >= 1 && enModel.roots.length <= 2, '英语分享薄弱项 1–3 个、根因 1–2 个');
+    const enDesk = await shareUi();
+    check(enDesk.download && !enDesk.hint, '英语分享弹层在 1280 宽可下载');
+    await saveShareImage('39-share-en.png');
+    assertSharePng('39-share-en.png');
+    await setView(375, 812);
+    await sleep(120);
+    const enPhone = await shareUi();
+    check(!enPhone.download && enPhone.hintText === '长按图片保存', '英语分享弹层在 375 宽改为长按保存');
+    await checkPage('英语分享弹层 375');
+    await setView(1280, 900);
 
     check(externalReqs.length === 0, '运行时没有页面发起的外网资源请求' + (externalReqs.length ? '：\n       ' + externalReqs.slice(0, 8).join('\n       ') : ''));
     check(errors.length === 0, 'console / 网络无错误' + (errors.length ? '：\n       ' + errors.join('\n       ') : ''));

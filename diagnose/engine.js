@@ -6,7 +6,8 @@
  *         nextItem(graph, session) -> {topicId, question, attempt} | null   （要出的具体题目；attempt 为 1 或 2）
  *         applyAnswer(graph, session, id, 'correct'|'wrong'|'skip', {text}) -> 新 session（不修改入参）
  *         summarize(graph, session) -> 结果（根因、学习路径、掌握/不稳/薄弱/未测）
- *         gradeTargets(graph, '一年级'|'七上') -> {ids, volumes, label} | null   （整年级 / 整册的知识点）
+ *         gradeTargets(graph, '一年级'|'七上'|'高一'|'选必二', subject?) -> {ids, volumes, label} | null
+ *           默认 subject 为 math，不把英语卷进数学的整册；'english' 只取英语（含九全），'physics' 只取物理（八上、八下、九全），'all' 不限学科
  *         createSession(graph, ids, {mode:'screen'}) -> 筛查会话：范围 = 目标本身，回溯不出范围，默认题量上限 SCREEN_LIMIT
  *         chapterSummary(graph, session) -> 按章汇总（薄弱章节在前）
  *         layout(graph, session, summary) -> 路径图的分层布局
@@ -484,30 +485,93 @@
    */
   function parseChapter(chapter) {
     const s = chapter || '';
-    const pm = /^([一二三四五六])年级([上下])册 (第\d+单元) (.+)$/.exec(s);
+    const pm = /^([一二三四五六七八九])年级([上下全])册 (第\d+单元|预备单元\d) (.+)$/.exec(s);
     if (pm) return { volume: pm[1] + pm[2], chapterNo: pm[3], chapterName: pm[4], section: '' };
     const pi = /^([一二三四五六])年级([上下])册 (综合与实践) (.+)$/.exec(s);
     if (pi) return { volume: pi[1] + pi[2], chapterNo: pi[3], chapterName: pi[4], section: '' };
+    // 高中英语按册名解析，避免「第1单元 Teenage Life」被空格拆成章名和节。
+    const enHs = /^(必修第([一二三])册|选择性必修第([一二三四])册) (欢迎单元|第\d+单元) (.+)$/.exec(s);
+    if (enHs) {
+      return {
+        volume: enHs[2] ? ('必修' + enHs[2]) : ('选必' + enHs[3]),
+        chapterNo: enHs[4],
+        chapterName: enHs[5],
+        section: ''
+      };
+    }
+    // 高中数学不拆上下册。高一/高二是必修两册，选必一/二/三是选择性必修三册。
+    const hs = /^(高[一二]|选必[一二三]) (数学建模|数学探究) (\S+)$/.exec(s);
+    if (hs) return { volume: hs[1], chapterNo: hs[2], chapterName: hs[3], section: '' };
     const m = /^(\S+) (第\S+章) (\S+?)(?: (\S+))?$/.exec(s);
     if (!m) return { volume: '', chapterNo: '', chapterName: s, section: '' };
     return { volume: m[1], chapterNo: m[2], chapterName: m[3], section: m[4] || '' };
   }
 
+  /** 学科：显式 subject 优先，否则 cne_ 是英语、cnp_ 是物理、cnc_ 是语文，其余算数学。 */
+  function subjectOf(topic) {
+    if (!topic) return 'math';
+    if (topic.subject === 'english' || topic.subject === 'math' || topic.subject === 'physics' || topic.subject === 'chinese') return topic.subject;
+    if (String(topic.id || '').indexOf('cne_') === 0) return 'english';
+    if (String(topic.id || '').indexOf('cnp_') === 0) return 'physics';
+    if (String(topic.id || '').indexOf('cnc_') === 0) return 'chinese';
+    return 'math';
+  }
+
   /**
    * 整年级 / 整册的知识点：'一年级' = 一上 + 一下，'七上' = 七年级上册。
+   * 高中不拆上下册：'高一' / '高一必修' = 必修第一册，'高二' / '高二必修' = 必修第二册。
+   * '选必一' / '选择性必修第一册'、选必二、选必三 = 选择性必修三册。
+   * 高中英语用「必修一」「必修二」「必修三」「选必四」，不占用数学的「高一」「高二」。
+   * subject 默认 math，避免三上、四上和选必一把英语和数学混在一起。
+   * 不带 subject 时「必修一」没有数学知识点，返回 null。
    * 返回 {ids, volumes, label}（ids 按 topics 文件顺序，只含正式知识点）；不认识的写法返回 null。
    */
-  function gradeTargets(graph, scope) {
+  function gradeTargets(graph, scope, subject) {
+    const subj = subject == null || subject === '' ? 'math' : subject;
     const key = String(scope == null ? '' : scope).trim();
+    const books = {
+      '高一': ['高一', '高一（必修第一册）'],
+      '高一必修': ['高一', '高一（必修第一册）'],
+      '高二': ['高二', '高二（必修第二册）'],
+      '高二必修': ['高二', '高二（必修第二册）'],
+      '选必一': ['选必一', '选必一（选择性必修第一册）'],
+      '选择性必修第一册': ['选必一', '选必一（选择性必修第一册）'],
+      '选必二': ['选必二', '选必二（选择性必修第二册）'],
+      '选择性必修第二册': ['选必二', '选必二（选择性必修第二册）'],
+      '选必三': ['选必三', '选必三（选择性必修第三册）'],
+      '选择性必修第三册': ['选必三', '选必三（选择性必修第三册）'],
+      '必修一': ['必修一', '必修一（必修第一册）'],
+      '必修第一册': ['必修一', '必修一（必修第一册）'],
+      '必修二': ['必修二', '必修二（必修第二册）'],
+      '必修第二册': ['必修二', '必修二（必修第二册）'],
+      '必修三': ['必修三', '必修三（必修第三册）'],
+      '必修第三册': ['必修三', '必修三（必修第三册）'],
+      '选必四': ['选必四', '选必四（选择性必修第四册）'],
+      '选择性必修第四册': ['选必四', '选必四（选择性必修第四册）']
+    };
     let volumes = null;
     let label = '';
-    const g = /^([一二三四五六七八九])年级$/.exec(key);
-    const v = /^([一二三四五六七八九])([上下])$/.exec(key);
-    if (g) { volumes = [g[1] + '上', g[1] + '下']; label = g[1] + '年级'; }
-    else if (v) { volumes = [key]; label = v[1] + '年级' + (v[2] === '上' ? '上册' : '下册'); }
+    if (books[key]) {
+      volumes = [books[key][0]];
+      label = books[key][1];
+    } else {
+      const g = /^([一二三四五六七八九])年级$/.exec(key);
+      const v = /^([一二三四五六七八九])([上下])$/.exec(key);
+      const whole = /^([一二三四五六七八九])全$/.exec(key);
+      if (g) {
+        volumes = [g[1] + '上', g[1] + '下'];
+        if (g[1] === '九') volumes.push('九全');
+        label = g[1] + '年级';
+      } else if (whole) {
+        volumes = [whole[1] + '全'];
+        label = whole[1] + '年级全一册';
+      } else if (v) { volumes = [key]; label = v[1] + '年级' + (v[2] === '上' ? '上册' : '下册'); }
+    }
     if (!volumes) return null;
     const ids = graph.topics.filter(function (t) {
-      return !t.external && volumes.indexOf(parseChapter(t.chapter).volume) >= 0;
+      if (t.external) return false;
+      if (subj !== 'all' && subjectOf(t) !== subj) return false;
+      return volumes.indexOf(parseChapter(t.chapter).volume) >= 0;
     }).map(function (t) { return t.id; });
     return ids.length ? { ids: ids, volumes: volumes, label: label } : null;
   }
@@ -637,7 +701,11 @@
     '米': 'm', 'm': 'm', '厘米': 'cm', 'cm': 'cm', '毫米': 'mm', 'mm': 'mm', '千米': 'km', '公里': 'km', 'km': 'km',
     '千克': 'kg', '公斤': 'kg', 'kg': 'kg', '克': 'g', 'g': 'g', '秒': 's', 's': 's', '分钟': 'min', 'min': 'min',
     '小时': 'h', 'h': 'h', '平方米': 'm^2', 'm^2': 'm^2', '平方厘米': 'cm^2', 'cm^2': 'cm^2',
-    '立方米': 'm^3', 'm^3': 'm^3', '立方厘米': 'cm^3', 'cm^3': 'cm^3', '元': '元', '度': '°', '°': '°'
+    '立方米': 'm^3', 'm^3': 'm^3', '立方厘米': 'cm^3', 'cm^3': 'cm^3', '元': '元', '度': '°', '°': '°',
+    // 物理：只收多字母单位，单字母（a、v、w、n、j）会和数学里的字母答案混淆，不收
+    'm/s': 'm/s', '米/秒': 'm/s', 'km/h': 'km/h', '千米/时': 'km/h', 'kg/m^3': 'kg/m^3', 'g/cm^3': 'g/cm^3',
+    'pa': 'Pa', '帕': 'Pa', '帕斯卡': 'Pa', 'kpa': 'kPa', 'hz': 'Hz', '赫兹': 'Hz', 'db': 'dB', '分贝': 'dB',
+    'kw*h': 'kW·h', '千瓦时': 'kW·h', 'ml': 'mL', '毫升': 'mL', 'n/kg': 'N/kg', 'j/kg': 'J/kg'
   };
 
   function canonUnit(u) {
@@ -857,10 +925,20 @@
   }
 
   /** 按题型判题：choice 比字母（或选项文字）；numeric 数值等价；short 规范化精确匹配 + accept；self 永远自评。 */
+  /**
+   * 带 percent: true 的题（目前只有物理的效率题），answer 是百分数的数值部分，如 50 表示 50%。
+   * 学生写 50 或 50%（全角 ％ 也算）都判对；0.5 不算，题干问的是「百分之多少」，0.5 也可能是把 0.5% 写错。
+   * 没有 percent 的题（全部数学题）不经过这里，50% 仍按 0.5 判。
+   */
+  function stripPercent(user) {
+    const s = String(user == null ? '' : user).trim();
+    return s.replace(/\s*[%％]$/, '');
+  }
+
   function judgeQuestion(q, user) {
     switch (q.type) {
       case 'choice': return judgeChoice(user, q);
-      case 'numeric': return judgeNumeric(user, q);
+      case 'numeric': return judgeNumeric(q.percent === true ? stripPercent(user) : user, q);
       case 'short': return judgeShort(user, q);
       case 'self': return { verdict: 'manual', reason: 'self' };
       default: return judgeAnswer(user, q.answer); // legacy：来自 diagnostic_question
@@ -871,6 +949,7 @@
     DEFAULT_LIMIT: DEFAULT_LIMIT,
     SCREEN_LIMIT: SCREEN_LIMIT,
     gradeTargets: gradeTargets,
+    subjectOf: subjectOf,
     chapterSummary: chapterSummary,
     buildGraph: buildGraph,
     questionById: questionById,

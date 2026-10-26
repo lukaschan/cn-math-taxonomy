@@ -1,6 +1,6 @@
 # 题库说明（data/questions.json）
 
-给每个正式知识点建的小题库，供 `diagnose/` 诊断工具按「每个知识点最多 2 题」的规则出题。现在共 **531** 个知识点（小学 216 + 初中 315），**2271** 题。小学和初中一样出题。**题目与答案全部由 AI 生成，没有教师审核**（小学题也一样）；正确性靠下面的自动核验和独立复核尽量保证，但不等于权威答案。
+给每个正式知识点建的小题库，供 `diagnose/` 诊断工具按「每个知识点最多 2 题」的规则出题。现在共 **828** 个知识点（小学 242 + 初中 315 + 高中必修 143 + 高中选择性必修 128），**3459** 题。三个学段一样出题。**题目与答案全部由 AI 生成，没有教师审核**；正确性靠下面的自动核验和独立复核尽量保证，但不等于权威答案。高中题只有自动核验，没有盲解。
 
 下面「统计」「核验方法」里标成第五轮的数字只计当时的 1407 道初中题。全库和小学见文末「小学题（2026-10-19）」。
 
@@ -14,9 +14,11 @@
 | `topicId` | 是 | 知识点 id，必须是正式知识点 |
 | `difficulty` | 是 | `basic`（直接套定义 / 一步计算）、`standard`（课本例题水平，2–3 步）、`advanced`（综合、多步或易错点） |
 | `type` | 是 | `numeric` 数值题、`choice` 选择题、`short` 短答题、`self` 开放题（必须自评） |
-| `prompt` | 是 | 中文题干，自包含、纯文字（不依赖图形；几何条件用文字、长度、角度、坐标写全）。单位写在题干里，答案不带单位 |
+| `prompt` | 是 | 中文题干，自包含（几何条件用文字、长度、角度、坐标写全，不看图也能读懂条件）。单位写在题干里，答案不带单位。需要看形状时另有可选的 `figure` |
 | `answer` | 是 | 字符串。numeric：一个数（整数 / 小数 / 分数 `a/b` / 负数），多个答案用全角「，」分隔；choice：正确选项字母；short：标准短答案；self：参考答案 |
-| `choices` | choice 必填 | `[{"key":"A","text":"…"}, …]`，3–4 个选项，key 依次为 A、B、C、D，选项文字互不相同 |
+| `choices` | choice 必填 | `[{"key":"A","text":"…"}, …]`，3–4 个选项，key 依次为 A、B、C、D，选项文字互不相同。选项可以另有 `figure`（内联 SVG） |
+| `figure` | 否 | 题干配图，内联 SVG 字符串（只含 `viewBox`，用 `currentColor`，不引用外网）。诊断页和知识图谱样题会画在题干下面 |
+| `hideChoiceText` | 否 | 仅选择题，且为 `true`。每个选项都有 `figure` 时，页面只显示图形、不显示选项名称（名称仍留在 `text` 里，用来判分和显示参考答案）。用于「下面哪一个是长方体」这类题，避免名称直接泄题 |
 | `accept` | 否 | short（也可用于 numeric）的等价答案列表 |
 | `explanation` | 是 | 1–3 句中文解析，答题后显示 |
 | `verify` | 否 | 一个 Python 表达式字符串，用于机器核验 `answer`（见下） |
@@ -106,3 +108,47 @@ numeric 和 choice 题可以带 `verify` 表达式，脚本在**受限环境**�
 独立复核记为 C 轮，写在 `data/second_pass_log.json`，名称是「C：小学题独立复核（primary_recheck，只读题干和选项，不读 answer / verify / explanation）」：`scripts/primary_recheck.py` 只根据题干和选项重算，864 题不一致 **0**。这一轮不是另请一位没看过出题脚本的人逐题手解，而是另一段不读取 `answer` / `verify` / `explanation` 的程序重算；和初中 A/B 轮的盲解不是同一做法。A/B 轮的记录没有改。`second_pass_mismatch` 仍是空数组。
 
 小学题同样没有教师审核。二年级下册等册次目录若以后改了，对应题目的情境不一定要改，但章节归属要跟着教材重核。
+
+## 高中必修题（2026-10-20）
+
+每个人教 A 版（2019）必修知识点 4 题，共 **572** 题，id 形如 `cnm_h001_q1`。字段与小学、初中题相同。q1 的题干等于该知识点 `diagnostic_question.question`；q1 和 q2 都是 basic，另外两道是 standard。没有 short、self、advanced。诊断题的 `answer` 是数值，或正确选项的**文字**（不是 A/B/C/D：选项字母按知识点序号轮换）。
+
+| 项 | 高中 572 题 | 全库 2843 题 |
+|---|---|---|
+| type | numeric 362，choice 210（合计 100%） | numeric 1909，choice 905，short 23，self 6（numeric + choice 占 99.0%） |
+| difficulty | basic 286，standard 286 | basic 1310，standard 1254，advanced 279 |
+| 每知识点 | 正好 4 题；每个点都有 basic 和 standard | 最少 4，最多 5，平均 4.22（4 题 × 527，5 题 × 147） |
+| auto_verified | 572 | **2311** |
+| mismatch | 0 | **0** |
+| unverifiable | 0 | 532（仍是原来没有 verify 的初中题） |
+
+可计算的题（计算、化简、求值、解的个数或端点）带 `verify`。不等式的解集如果是区间，改成选择题，或改成问整数解的个数、最小整数解。方差题在题干里写明除以 n，并用 `pvariance`。百分位数题在题干里写了人教教材的位置规则（排序后按 n×p% 取位；不是整数就取下一位，是整数就取相邻两项的平均），并标待核。含 √2、√3/2 这类不能化成简单分数的值做成选择题，或改成平方后的有理数。
+
+`second_pass_log.json` 的 D 轮写明：高中必修题由 `scripts/hs_build.py` 用同一条 `verify` 表达式求出答案再写入，然后 `verify_questions.py` 再比对一次。mismatch 为 0 只说明格式和表达式一致，**不是另一遍独立解题**。没有做初中 A/B 轮那种盲解。概念题的选项文字与 verify 返回的字符串相同。批次在 `data/_qbatches/high.json`。
+
+立体几何的判定、性质是选择题，不要求学生写出证明。高中题同样没有教师审核。
+
+## 高中选择性必修题（2026-10-20）
+
+每个人教 A 版（2019）选择性必修知识点 4 题，共 **512** 题，id 从 `cnm_h144_q1` 起。字段与必修题相同。q1、q2 是 basic，q3、q4 是 standard。题干自包含：不写「同一 / 上题 / 该函数」这类指着别的题的说法，也不问「本知识点 / 课标是否要求」。
+
+| 项 | 选择性必修 512 题 | 全库 3355 题 |
+|---|---|---|
+| type | numeric 340，choice 172 | numeric 2251，choice 1075，short 23，self 6 |
+| difficulty | basic 256，standard 256 | basic 1566，standard 1510，advanced 279 |
+| 每知识点 | 正好 4 题 | 最少 4，最多 5 |
+| auto_verified | 512 | **2823** |
+| mismatch | 0 | **0** |
+| unverifiable | 0 | 532（仍是原来没有 verify 的初中题） |
+
+E 轮和 D 轮一样：`scripts/hs_sel_build.py` 用同一条 `verify` 写出答案，再由 `verify_questions.py` 比对，**不是盲解**。批次在 `data/_qbatches/high_sel.json`。
+
+## 高中英语题（2026-10-21）
+
+每个人教版（2019）高中英语知识点 4 题，共 **1036** 题，id 从 `cne_h001_q1` 起。全部是选择题。q1 的题干等于该知识点 `diagnostic_question.question`，答案是正确选项的文字（不是 A/B/C/D）。q1 和 q2 是 basic，q3 和 q4 是 standard。题干自包含：不以「同一 / 上题 / 该题 / 同上」开头，也不出现「本知识点 / 课标 / 是否要求」。短文是新写的，不抄教材原文。没有听力、口语。
+
+小学英语 788 题、初中英语 980 题此前已经入库。全库现在 **6159** 题（数学 3355 + 英语 2804）。`verify_questions.py`：auto_verified **5627**，mismatch **0**，unverifiable **532**（仍是原来没有 verify 的初中数学题）。高中英语的 `verify` 返回正确选项的文字，和出题用的是同一条逻辑，**不是盲解**。生成脚本在 `scripts/enh_b1.py` 到 `enh_s4.py`，由 `scripts/enh_build.py` 写入 `questions.json`。
+
+## 2026-10 英语新版教材
+
+按新版人教 PEP 和 Go for it! 新增 23 个知识点（小学 `cne_p198`–`cne_p208`，初中 `cne_j246`–`cne_j257`），每个 4 道选择题，共 92 题，干扰项是常见错误形式或近形词。全库现在 **6355** 题（数学 3459 + 英语 2896）。`verify_questions.py`：auto_verified **5823**，mismatch **0**，unverifiable **532**（没有变）。
