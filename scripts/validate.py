@@ -29,6 +29,10 @@ STRICT_STANDARDS = os.environ.get("STRICT_STANDARDS") == "1"
 MATH_DOMAINS = {"数与代数", "图形与几何", "统计与概率", "综合与实践"}
 EN_DOMAINS = {"语音", "词汇", "语法", "日常表达", "读写"}
 ZH_DOMAINS = {"拼音", "识字写字", "词语", "句子", "阅读理解", "古诗文积累", "习作基础"}
+SCI_DOMAINS = {"物质科学", "生命科学", "地球与宇宙科学", "技术与工程"}
+MOR_DOMAINS = {"生活与安全", "学校生活", "家庭与亲情", "社会规则", "公民与国家", "自然与环境"}
+HIS_DOMAINS = {"中国古代史", "中国近代史", "中国现代史", "世界古代史", "世界近代史", "世界现代史"}
+GEO_DOMAINS = {"地球与地图", "世界地理", "中国地理"}
 # 物理知识点的 domain 用课标一级主题；“实验探究”只出现在课标条目上。
 PHY_DOMAINS = {"物质", "运动和相互作用", "能量", "跨学科实践"}
 PHY_STD_TOPS = {"1": "物质", "2": "运动和相互作用", "3": "能量", "4": "实验探究", "5": "跨学科实践"}
@@ -37,7 +41,7 @@ PHY_STD_ID_RE = re.compile(r"^cps-2022:([1-5])\.(\d)\.(\d+)$")
 PHY_HS_STD_ID_RE = re.compile(r"^cps-hs-2017:([BS])([1-3])\.([1-4X])\.(\d+)$")
 PHY_HS_STD_DOMAINS = {"物质", "运动和相互作用", "能量", "实验探究", "跨学科实践"}
 PHY_SENIOR_GRADES = (10, 11, 12, 13, 14, 15)
-DOMAINS = MATH_DOMAINS | EN_DOMAINS | PHY_DOMAINS | ZH_DOMAINS
+DOMAINS = MATH_DOMAINS | EN_DOMAINS | PHY_DOMAINS | ZH_DOMAINS | SCI_DOMAINS | MOR_DOMAINS | HIS_DOMAINS | GEO_DOMAINS
 TYPES = {"conceptual", "procedural", "reasoning", "application", "modeling"}
 STRENGTHS = {"hard", "soft"}
 CONFIDENCES = {"exact", "inferred"}
@@ -57,6 +61,17 @@ ZH_STD_CODES = {
     "PY": "拼音", "SZ": "识字写字", "CY": "词语", "JZ": "句子",
     "YD": "阅读理解", "GS": "古诗文积累", "XZ": "习作基础",
 }
+SCI_STD_CODES = {"WZ": "物质科学", "SM": "生命科学", "DQ": "地球与宇宙科学", "JG": "技术与工程"}
+SCI_STD_ID_RE = re.compile(r"^css-2022:([123])\.(WZ|SM|DQ|JG)\.(\d{2,})$")
+MOR_STD_CODES = {"LS": "生活与安全", "XX": "学校生活", "JT": "家庭与亲情", "SH": "社会规则", "GM": "公民与国家", "ZR": "自然与环境"}
+MOR_STD_ID_RE = re.compile(r"^cds-2022:([123])\.(LS|XX|JT|SH|GM|ZR)\.(\d{2,})$")
+HIS_STD_CODES = {
+    "CA": "中国古代史", "CN": "中国近代史", "CM": "中国现代史",
+    "WA": "世界古代史", "WN": "世界近代史", "WM": "世界现代史",
+}
+HIS_STD_ID_RE = re.compile(r"^chs-2022:(CA|CN|CM|WA|WN|WM)\.(\d{2,})$")
+GEO_STD_CODES = {"EM": "地球与地图", "WG": "世界地理", "CG": "中国地理"}
+GEO_STD_ID_RE = re.compile(r"^cgs-2022:(EM|WG|CG)\.(\d{2,})$")
 ZH_STD_ID_RE = re.compile(r"^ccs-2022:([123])\.(PY|SZ|CY|JZ|YD|GS|XZ)\.(\d{2,})$")
 EN_PROMPT_START_RE = re.compile(r"^(同一|上题|该题|同上)")
 EN_PROMPT_BAN_RE = re.compile(r"本知识点|课标|是否要求")
@@ -64,8 +79,8 @@ CORE_FIELDS = ["id", "name", "domain", "grade", "semester", "chapter", "type",
                "description", "mastery_criteria", "diagnostic_question", "external"]
 EXT_FIELDS = ["id", "name", "domain", "grade", "description", "external"]
 # cnm_001 初中正式；cnm_p001 小学正式；cnm_h001 高中正式。cne_p001 小学英语，cne_j001 初中英语，cne_h001 高中英语。
-# cnp_001 初中物理；cnp_h001 高中物理（必修一至选必三，grade 10–15）。cnc_p001 小学语文。
-ID_RE = re.compile(r"^(?:cnm_(?:p|h)?|cne_[pjh]|cnp_h?|cnc_p)\d{3,}$")
+# cnp_001 初中物理；cnp_h001 高中物理（必修一至选必三，grade 10–15）。cnc_p001 小学语文；cns_p001 小学科学；cnd_p001 小学道德与法治；cnh_j001 初中历史；cng_j001 初中地理。
+ID_RE = re.compile(r"^(?:cnm_(?:p|h)?|cne_[pjh]|cnp_h?|cnc_p|cns_p|cnd_p|cnh_j|cng_j)\d{3,}$")
 # 10、11 是必修第一、二册；12、13、14 是选择性必修第一、二、三册，不是教学年份。
 GRADES = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14)
 ALIASES_PATH = os.path.join(ROOT, "data", "id-aliases.json")
@@ -81,6 +96,8 @@ MAPPING_FILE_STATUS = ("example", "draft", "reviewed")
 errors = []
 warnings = []
 N_PHY_EDGES = 0
+N_HIS_EDGES = 0
+N_GEO_EDGES = 0
 
 
 def err(msg):
@@ -118,6 +135,22 @@ def is_chinese_id(tid):
     return str(tid).startswith("cnc_")
 
 
+def is_science_id(tid):
+    return str(tid).startswith("cns_")
+
+
+def is_morality_id(tid):
+    return str(tid).startswith("cnd_")
+
+
+def is_history_id(tid):
+    return str(tid).startswith("cnh_")
+
+
+def is_geography_id(tid):
+    return str(tid).startswith("cng_")
+
+
 def topic_subject(tid):
     if is_english_id(tid):
         return "english"
@@ -125,6 +158,14 @@ def topic_subject(tid):
         return "physics"
     if is_chinese_id(tid):
         return "chinese"
+    if is_science_id(tid):
+        return "science"
+    if is_morality_id(tid):
+        return "morality"
+    if is_history_id(tid):
+        return "history"
+    if is_geography_id(tid):
+        return "geography"
     if str(tid).startswith("cnm_"):
         return "math"
     return ""
@@ -221,6 +262,8 @@ def check_mapping_files(ids):
             continue
         if status == "example" and len(entries) > 10:
             err("%s 示例文件至多 10 条，现有 %d 条" % (where, len(entries)))
+        expected_subject = "english" if isinstance(edition, str) and edition.endswith("_english") else "math"
+        subject_label = "英语" if expected_subject == "english" else "数学"
         seen = set()
         for i, e in enumerate(entries):
             ew = "%s entries[%d]" % (where, i)
@@ -231,8 +274,8 @@ def check_mapping_files(ids):
             t = ids.get(tid)
             if t is None:
                 err("%s topicId 不存在：%r" % (ew, tid))
-            elif t.get("external") or topic_subject(tid) != "math":
-                err("%s 只能对照数学正式知识点：%s" % (ew, tid))
+            elif t.get("external") or topic_subject(tid) != expected_subject:
+                err("%s 只能对照%s正式知识点：%s" % (ew, subject_label, tid))
             if tid in seen:
                 err("%s topicId 重复：%s" % (ew, tid))
             seen.add(tid)
@@ -304,16 +347,49 @@ def check_topics(topics):
                     err("%s mathLinks[%d] 只能指向数学知识点：%s" % (where, j, ml["id"]))
             if "mathLinks" in t and not (isinstance(t["mathLinks"], list) and t["mathLinks"]):
                 err("%s mathLinks 必须是非空数组" % where)
+        elif subj == "science":
+            if marked != "science":
+                err("%s 科学知识点的 subject 必须是 science" % where)
+            if t.get("domain") not in SCI_DOMAINS:
+                err("%s 科学 domain 取值非法：%r" % (where, t.get("domain")))
+            if "mathLinks" in t and not (isinstance(t["mathLinks"], list) and t["mathLinks"]):
+                err("%s mathLinks 必须是非空数组" % where)
+            for j, ml in enumerate(t.get("mathLinks") or []):
+                if not (isinstance(ml, dict) and nonempty_str(ml.get("id")) and nonempty_str(ml.get("reason"))):
+                    err("%s mathLinks[%d] 必须是 {id, reason}" % (where, j))
+                elif not str(ml["id"]).startswith("cnm_"):
+                    err("%s mathLinks[%d] 只能指向数学知识点：%s" % (where, j, ml["id"]))
+        elif subj == "morality":
+            if marked != "morality":
+                err("%s 道德与法治知识点的 subject 必须是 morality" % where)
+            if t.get("domain") not in MOR_DOMAINS:
+                err("%s 道德与法治 domain 取值非法：%r" % (where, t.get("domain")))
+            if "mathLinks" in t:
+                err("%s 只有物理和科学知识点可以带 mathLinks" % where)
+        elif subj == "history":
+            if marked != "history":
+                err("%s 历史知识点的 subject 必须是 history" % where)
+            if t.get("domain") not in HIS_DOMAINS:
+                err("%s 历史 domain 取值非法：%r" % (where, t.get("domain")))
+            if "mathLinks" in t:
+                err("%s 只有物理和科学知识点可以带 mathLinks" % where)
+        elif subj == "geography":
+            if marked != "geography":
+                err("%s 地理知识点的 subject 必须是 geography" % where)
+            if t.get("domain") not in GEO_DOMAINS:
+                err("%s 地理 domain 取值非法：%r" % (where, t.get("domain")))
+            if "mathLinks" in t:
+                err("%s 只有物理和科学知识点可以带 mathLinks" % where)
         elif subj == "chinese":
             if marked != "chinese":
                 err("%s 语文知识点的 subject 必须是 chinese" % where)
             if t.get("domain") not in ZH_DOMAINS:
                 err("%s 语文 domain 取值非法：%r" % (where, t.get("domain")))
             if "mathLinks" in t:
-                err("%s 只有物理知识点可以带 mathLinks" % where)
+                err("%s 只有物理和科学知识点可以带 mathLinks" % where)
         else:
             if "mathLinks" in t:
-                err("%s 只有物理知识点可以带 mathLinks" % where)
+                err("%s 只有物理和科学知识点可以带 mathLinks" % where)
             if marked not in (None, "math"):
                 err("%s 数学知识点不能标成其他学科：%r" % (where, marked))
             if t.get("domain") not in MATH_DOMAINS:
@@ -335,6 +411,14 @@ def check_topics(topics):
             pass
         elif g not in GRADES:
             err("%s grade 必须是 1–14 的整数（10、11 为必修两册，12–14 为选择性必修三册）" % where)
+        if subj == "science" and g not in (1, 2, 3, 4, 5, 6):
+            err("%s 小学科学 grade 必须是 1–6" % where)
+        if subj == "morality" and g not in (1, 2, 3, 4, 5, 6):
+            err("%s 小学道德与法治 grade 必须是 1–6" % where)
+        if subj == "history" and g not in (7, 8, 9):
+            err("%s 初中历史 grade 必须是 7–9" % where)
+        if subj == "geography" and g not in (7, 8):
+            err("%s 初中地理 grade 必须是 7 或 8" % where)
         if subj == "chinese" and g not in (1, 2, 3, 4, 5, 6):
             err("%s 小学语文 grade 必须是 1–6" % where)
         if subj == "english":
@@ -362,7 +446,7 @@ def check_topics(topics):
             err("%s diagnostic_question 必须含非空 question 与 answer" % where)
         if "root_reason" in t and not nonempty_str(t["root_reason"]):
             err("%s root_reason 为空" % where)
-        if subj in ("english", "chinese") and isinstance(t.get("diagnostic_question"), dict):
+        if subj in ("english", "chinese", "science", "morality", "history", "geography") and isinstance(t.get("diagnostic_question"), dict):
             problem = english_prompt_problem(t["diagnostic_question"].get("question"))
             if problem:
                 err("%s 诊断题%s" % (where, problem))
@@ -374,8 +458,10 @@ def check_deps(deps, ids):
     dependents = defaultdict(list)
     seen = set()
     n_hard = n_soft = n_en_hard = n_en_soft = 0
-    global N_PHY_EDGES
+    global N_PHY_EDGES, N_HIS_EDGES, N_GEO_EDGES
     N_PHY_EDGES = 0
+    N_HIS_EDGES = 0
+    N_GEO_EDGES = 0
     if not isinstance(deps, list):
         err("dependencies.json 顶层必须是数组")
         return prereqs, dependents, 0, 0, 0, 0
@@ -405,6 +491,10 @@ def check_deps(deps, ids):
             err("%s 跨学科边：%s -> %s" % (where, a, b))
         if sa == "physics":
             N_PHY_EDGES += 1
+        if sa == "history":
+            N_HIS_EDGES += 1
+        if sa == "geography":
+            N_GEO_EDGES += 1
         if sa == "english" and d.get("strength") in STRENGTHS:
             if d["strength"] == "hard":
                 n_en_hard += 1
@@ -414,6 +504,22 @@ def check_deps(deps, ids):
             ra, rb = volume_rank(ids[a]), volume_rank(ids[b])
             if ra is not None and rb is not None and rb > ra:
                 err("%s 英语先修年级或册次更晚：%s 依赖 %s" % (where, a, b))
+        if sa == "science" and sb == "science" and a in ids and b in ids:
+            ra, rb = volume_rank(ids[a]), volume_rank(ids[b])
+            if ra is not None and rb is not None and rb > ra:
+                err("%s 科学先修年级或册次更晚：%s 依赖 %s" % (where, a, b))
+        if sa == "morality" and sb == "morality" and a in ids and b in ids:
+            ra, rb = volume_rank(ids[a]), volume_rank(ids[b])
+            if ra is not None and rb is not None and rb > ra:
+                err("%s 道德与法治先修年级或册次更晚：%s 依赖 %s" % (where, a, b))
+        if sa == "history" and sb == "history" and a in ids and b in ids:
+            ra, rb = volume_rank(ids[a]), volume_rank(ids[b])
+            if ra is not None and rb is not None and rb > ra:
+                err("%s 历史先修年级或册次更晚：%s 依赖 %s" % (where, a, b))
+        if sa == "geography" and sb == "geography" and a in ids and b in ids:
+            ra, rb = volume_rank(ids[a]), volume_rank(ids[b])
+            if ra is not None and rb is not None and rb > ra:
+                err("%s 地理先修年级或册次更晚：%s 依赖 %s" % (where, a, b))
         if sa == "chinese" and sb == "chinese" and a in ids and b in ids:
             ra, rb = volume_rank(ids[a]), volume_rank(ids[b])
             if ra is not None and rb is not None and rb > ra:
@@ -478,8 +584,13 @@ def report(ids, prereqs, dependents, n_hard, n_soft, n_en_hard, n_en_soft):
     en_core = [t for t in core if is_english_id(t.get("id"))]
     phy_core = [t for t in core if is_physics_id(t.get("id"))]
     zh_core = [t for t in core if is_chinese_id(t.get("id"))]
+    sci_core = [t for t in core if is_science_id(t.get("id"))]
+    mor_core = [t for t in core if is_morality_id(t.get("id"))]
+    his_core = [t for t in core if is_history_id(t.get("id"))]
+    geo_core = [t for t in core if is_geography_id(t.get("id"))]
     print("知识点总数：%d（正式 %d，小学外部 %d）" % (len(ids), len(core), len(ext)))
-    print("其中数学 %d，语文 %d，英语 %d，物理 %d" % (len(math_core), len(zh_core), len(en_core), len(phy_core)))
+    print("其中数学 %d，语文 %d，英语 %d，物理 %d，科学 %d，道德与法治 %d，历史 %d，地理 %d" % (
+        len(math_core), len(zh_core), len(en_core), len(phy_core), len(sci_core), len(mor_core), len(his_core), len(geo_core)))
     print("\n按 domain（数学正式知识点）：")
     for k, v in sorted(Counter(t["domain"] for t in math_core).items(), key=lambda x: -x[1]):
         print("  %-8s %d" % (k, v))
@@ -523,6 +634,40 @@ def report(ids, prereqs, dependents, n_hard, n_soft, n_en_hard, n_en_soft):
         zc = Counter(vol_label(t) for t in zh_core)
         for k in ["一上", "一下", "二上", "二下", "三上", "三下", "四上", "四下", "五上", "五下", "六上", "六下"]:
             print("  %-8s %d" % (k, zc.get(k, 0)))
+    if sci_core:
+        print("\n科学按 domain：")
+        for k, v in sorted(Counter(t["domain"] for t in sci_core).items(), key=lambda x: -x[1]):
+            print("  %-8s %d" % (k, v))
+        print("科学按册：")
+        scc = Counter(vol_label(t) for t in sci_core)
+        for k in ["一上", "一下", "二上", "二下", "三上", "三下", "四上", "四下", "五上", "五下", "六上", "六下"]:
+            print("  %-8s %d" % (k, scc.get(k, 0)))
+    if mor_core:
+        print("\n道德与法治按 domain：")
+        for k, v in sorted(Counter(t["domain"] for t in mor_core).items(), key=lambda x: -x[1]):
+            print("  %-8s %d" % (k, v))
+        print("道德与法治按册：")
+        mc = Counter(vol_label(t) for t in mor_core)
+        for k in ["一上", "一下", "二上", "二下", "三上", "三下", "四上", "四下", "五上", "五下", "六上", "六下"]:
+            print("  %-8s %d" % (k, mc.get(k, 0)))
+    if his_core:
+        print("\n历史按 domain：")
+        for k, v in sorted(Counter(t["domain"] for t in his_core).items(), key=lambda x: -x[1]):
+            print("  %-8s %d" % (k, v))
+        print("历史按册：")
+        hc = Counter(vol_label(t) for t in his_core)
+        for k in ["七上", "七下", "八上", "八下", "九上", "九下"]:
+            print("  %-8s %d" % (k, hc.get(k, 0)))
+        print("历史先修边 %d 条" % N_HIS_EDGES)
+    if geo_core:
+        print("\n地理按 domain：")
+        for k, v in sorted(Counter(t["domain"] for t in geo_core).items(), key=lambda x: -x[1]):
+            print("  %-8s %d" % (k, v))
+        print("地理按册：")
+        gc = Counter(vol_label(t) for t in geo_core)
+        for k in ["七上", "七下", "八上", "八下"]:
+            print("  %-8s %d" % (k, gc.get(k, 0)))
+        print("地理先修边 %d 条" % N_GEO_EDGES)
     if en_core:
         print("\n英语按 domain：")
         for k, v in sorted(Counter(t["domain"] for t in en_core).items(), key=lambda x: -x[1]):
@@ -581,6 +726,10 @@ def check_standards_file(std):
     saw_physics = False
     saw_physics_senior = False
     saw_chinese = False
+    saw_science = False
+    saw_morality = False
+    saw_history = False
+    saw_geography = False
     for i, it in enumerate(items):
         where = "standards.items[%d]" % i
         if not isinstance(it, dict):
@@ -599,6 +748,10 @@ def check_standards_file(std):
         em = EN_STD_ID_RE.match(sid)
         ehm = EN_HS_STD_ID_RE.match(sid)
         zm = ZH_STD_ID_RE.match(sid)
+        scm = SCI_STD_ID_RE.match(sid)
+        mrm = MOR_STD_ID_RE.match(sid)
+        hism = HIS_STD_ID_RE.match(sid)
+        geom = GEO_STD_ID_RE.match(sid)
         pm = PHY_STD_ID_RE.match(sid)
         phm = PHY_HS_STD_ID_RE.match(sid)
         if phm:
@@ -679,6 +832,19 @@ def check_standards_file(std):
                 err("%s 高中英语课标必须显式标 verbatim:false（原文未逐页核对）" % where)
             if it.get("page_or_ref") != "待核":
                 err("%s 高中英语课标 page_or_ref 必须是「待核」，不能编页码" % where)
+        elif scm:
+            saw_science = True
+            level, code, num = scm.group(1), scm.group(2), int(scm.group(3))
+            if it.get("domain") != SCI_STD_CODES[code]:
+                err("%s domain 与 id 中的领域代码不一致：%r" % (where, it.get("domain")))
+            key = ("css", level, code)
+            if num != last.get(key, 0) + 1:
+                err("%s 编号在学段和领域内不连续（上一条为 %02d）" % (where, last.get(key, 0)))
+            last[key] = num
+            if it.get("verbatim") is not False:
+                err("%s 科学课标必须显式标 verbatim:false（原文未逐页核对）" % where)
+            if it.get("page_or_ref") != "待核":
+                err("%s 科学课标 page_or_ref 必须是「待核」，不能编页码" % where)
         elif zm:
             saw_chinese = True
             level, code, num = zm.group(1), zm.group(2), int(zm.group(3))
@@ -692,8 +858,47 @@ def check_standards_file(std):
                 err("%s 语文课标必须显式标 verbatim:false（原文未逐页核对）" % where)
             if it.get("page_or_ref") != "待核":
                 err("%s 语文课标 page_or_ref 必须是「待核」，不能编页码" % where)
+        elif mrm:
+            saw_morality = True
+            level, code, num = mrm.group(1), mrm.group(2), int(mrm.group(3))
+            if it.get("domain") != MOR_STD_CODES[code]:
+                err("%s domain 与 id 中的领域代码不一致：%r" % (where, it.get("domain")))
+            key = ("cds", level, code)
+            if num != last.get(key, 0) + 1:
+                err("%s 编号在学段和领域内不连续（上一条为 %02d）" % (where, last.get(key, 0)))
+            last[key] = num
+            if it.get("verbatim") is not False:
+                err("%s 道德与法治课标必须显式标 verbatim:false（原文未逐页核对）" % where)
+            if it.get("page_or_ref") != "待核":
+                err("%s 道德与法治课标 page_or_ref 必须是「待核」，不能编页码" % where)
+        elif hism:
+            saw_history = True
+            code, num = hism.group(1), int(hism.group(2))
+            if it.get("domain") != HIS_STD_CODES[code]:
+                err("%s domain 与 id 中的领域代码不一致：%r" % (where, it.get("domain")))
+            key = ("chs", code)
+            if num != last.get(key, 0) + 1:
+                err("%s 编号在领域内不连续（上一条为 %02d）" % (where, last.get(key, 0)))
+            last[key] = num
+            if it.get("verbatim") is not False:
+                err("%s 历史课标必须显式标 verbatim:false（原文未逐页核对）" % where)
+            if it.get("page_or_ref") != "待核":
+                err("%s 历史课标 page_or_ref 必须是「待核」，不能编页码" % where)
+        elif geom:
+            saw_geography = True
+            code, num = geom.group(1), int(geom.group(2))
+            if it.get("domain") != GEO_STD_CODES[code]:
+                err("%s domain 与 id 中的领域代码不一致：%r" % (where, it.get("domain")))
+            key = ("cgs", code)
+            if num != last.get(key, 0) + 1:
+                err("%s 编号在领域内不连续（上一条为 %02d）" % (where, last.get(key, 0)))
+            last[key] = num
+            if it.get("verbatim") is not False:
+                err("%s 地理课标必须显式标 verbatim:false（原文未逐页核对）" % where)
+            if it.get("page_or_ref") != "待核":
+                err("%s 地理课标 page_or_ref 必须是「待核」，不能编页码" % where)
         else:
-            err("%s id 格式不合法（应为 cms-2022:<学段>.<NA|GG|SP|IP>.<NN>、cms-2017:H.<PRE|FUN|GA|PS|MI>.<NN>、ces-2022:<1|2|3>.<PH|VO|GR|FU|RW>.<NN> 、ces-2017:H.<B|S>.<PH|VO|GR|FU|RW>.<NN> 、ccs-2022:<1|2|3>.<PY|SZ|CY|JZ|YD|GS|XZ>.<NN> 、cps-2022:<1-5>.<二级>.<序号> 或 cps-hs-2017:<B|S><1-3>.<1-4|X>.<序号>）" % where)
+            err("%s id 格式不合法（应为 cms-2022:<学段>.<NA|GG|SP|IP>.<NN>、cms-2017:H.<PRE|FUN|GA|PS|MI>.<NN>、ces-2022:<1|2|3>.<PH|VO|GR|FU|RW>.<NN> 、ces-2017:H.<B|S>.<PH|VO|GR|FU|RW>.<NN> 、ccs-2022:<1|2|3>.<PY|SZ|CY|JZ|YD|GS|XZ>.<NN> 、css-2022:<1|2|3>.<WZ|SM|DQ|JG>.<NN> 、cds-2022:<1|2|3>.<LS|XX|JT|SH|GM|ZR>.<NN> 、chs-2022:<CA|CN|CM|WA|WN|WM>.<NN> 、cgs-2022:<EM|WG|CG>.<NN> 、cps-2022:<1-5>.<二级>.<序号> 或 cps-hs-2017:<B|S><1-3>.<1-4|X>.<序号>）" % where)
         for f in ("domain", "section", "text"):
             if not nonempty_str(it.get(f)):
                 err("%s 字段 %s 缺失或为空" % (where, f))
@@ -741,6 +946,18 @@ def check_standards_file(std):
                             err("english.senior.%s 缺失或为空" % f)
                     if senior.get("year") != 2025:
                         err("english.senior.year 必须是 2025（2017年版2025年修订）")
+    if saw_science:
+        sc = std.get("science")
+        if not isinstance(sc, dict):
+            err("有科学课标条目，但缺少 science 对象")
+        else:
+            for f in ("title", "issuer", "stage", "note"):
+                if not nonempty_str(sc.get(f)):
+                    err("science.%s 缺失或为空" % f)
+            if sc.get("title") != "义务教育科学课程标准（2022年版）":
+                err("science.title 必须是「义务教育科学课程标准（2022年版）」")
+            if sc.get("year") != 2022:
+                err("science.year 必须是 2022")
     if saw_chinese:
         zh = std.get("chinese")
         if not isinstance(zh, dict):
@@ -755,6 +972,42 @@ def check_standards_file(std):
                 err("chinese.year 必须是整数")
             elif zh.get("year") != 2022:
                 err("chinese.year 必须是 2022")
+    if saw_morality:
+        mo = std.get("morality")
+        if not isinstance(mo, dict):
+            err("有道德与法治课标条目，但缺少 morality 对象")
+        else:
+            for f in ("title", "issuer", "stage", "note"):
+                if not nonempty_str(mo.get(f)):
+                    err("morality.%s 缺失或为空" % f)
+            if mo.get("title") != "义务教育道德与法治课程标准（2022年版）":
+                err("morality.title 必须是「义务教育道德与法治课程标准（2022年版）」")
+            if mo.get("year") != 2022:
+                err("morality.year 必须是 2022")
+    if saw_history:
+        hi = std.get("history")
+        if not isinstance(hi, dict):
+            err("有历史课标条目，但缺少 history 对象")
+        else:
+            for f in ("title", "issuer", "stage", "note"):
+                if not nonempty_str(hi.get(f)):
+                    err("history.%s 缺失或为空" % f)
+            if hi.get("title") != "义务教育历史课程标准（2022年版）":
+                err("history.title 必须是「义务教育历史课程标准（2022年版）」")
+            if hi.get("year") != 2022:
+                err("history.year 必须是 2022")
+    if saw_geography:
+        ge = std.get("geography")
+        if not isinstance(ge, dict):
+            err("有地理课标条目，但缺少 geography 对象")
+        else:
+            for f in ("title", "issuer", "stage", "note"):
+                if not nonempty_str(ge.get(f)):
+                    err("geography.%s 缺失或为空" % f)
+            if ge.get("title") != "义务教育地理课程标准（2022年版）":
+                err("geography.title 必须是「义务教育地理课程标准（2022年版）」")
+            if ge.get("year") != 2022:
+                err("geography.year 必须是 2022")
     return items_by_id
 
 
@@ -802,6 +1055,14 @@ def check_topic_standards(ids, std_items):
                     err("%s 初中物理只能引用 cps-2022，高中物理只能引用 cps-hs-2017：%s" % (sw, sid))
                 if is_chinese_id(tid) != str(sid).startswith("ccs-"):
                     err("%s 学科与课标条目不一致：%s" % (sw, sid))
+                if is_science_id(tid) != str(sid).startswith("css-"):
+                    err("%s 学科与课标条目不一致：%s" % (sw, sid))
+                if is_morality_id(tid) != str(sid).startswith("cds-"):
+                    err("%s 学科与课标条目不一致：%s" % (sw, sid))
+                if is_history_id(tid) != str(sid).startswith("chs-"):
+                    err("%s 学科与课标条目不一致：%s" % (sw, sid))
+                if is_geography_id(tid) != str(sid).startswith("cgs-"):
+                    err("%s 学科与课标条目不一致：%s" % (sw, sid))
             if s.get("confidence") not in CONFIDENCES:
                 err("%s confidence 只能是 exact 或 inferred：%r" % (sw, s.get("confidence")))
             if "note" in s and not nonempty_str(s["note"]):
@@ -818,7 +1079,11 @@ def report_standards(ids, std_items, cited, empty_core):
     std_order = ("数与代数", "图形与几何", "统计与概率", "综合与实践",
                  "拼音", "识字写字", "词语", "句子", "阅读理解", "古诗文积累", "习作基础",
                  "语音", "词汇", "语法", "日常表达", "读写",
-                 "物质", "运动和相互作用", "能量", "实验探究", "跨学科实践")
+                 "物质", "运动和相互作用", "能量", "实验探究", "跨学科实践",
+                 "物质科学", "生命科学", "地球与宇宙科学", "技术与工程",
+                 "生活与安全", "学校生活", "家庭与亲情", "社会规则", "公民与国家", "自然与环境",
+                 "中国古代史", "中国近代史", "中国现代史", "世界古代史", "世界近代史", "世界现代史",
+                 "地球与地图", "世界地理", "中国地理")
     print("\n课标条目：%d 条（%s）" % (len(std_items), "，".join("%s %d" % (k, c[k]) for k in std_order if c[k])))
     n_ok = len(core) - len(empty_core)
     pct = 100.0 * n_ok / len(core) if core else 0.0
@@ -840,11 +1105,22 @@ def report_standards(ids, std_items, cited, empty_core):
 
 # ---------------------------------------------------------------- 题库（data/questions.json）
 
-Q_DIFFICULTIES = ("basic", "standard", "advanced")
+Q_DIFFICULTIES = ("basic", "standard", "challenge")
+Q_DIFFICULTY_ALIASES = {"advanced": "challenge"}  # 旧名，与 challenge 同档
 Q_TYPES = ("numeric", "choice", "short", "self")
 Q_FIELDS = {"id", "topicId", "difficulty", "type", "prompt", "answer", "choices", "accept",
             "explanation", "verify", "unordered", "fixed_from_source", "figure", "hideChoiceText", "percent"}
-Q_ID_RE = re.compile(r"^((?:cnm_(?:p|h)?|cne_[pjh]|cnp_h?|cnc_p)\d{3,})_q([1-9]\d*)$")
+# 与知识点无关的纯整数/小数四则（不含分数写法 a/b）。
+# 一至六年级 challenge 不得直接「计算：…＝？」。低年级允许写进情境里的简单计算，
+# 但整题不能只是「计算：2＋3＝？」或「3＋2 的得数是哪一个？」。
+PURE_ARITH_PROMPT_RE = re.compile(
+    r"^(计算：)?\d+(?:\.\d+)?(?:\s*[＋+\-－×*÷]\s*\d+(?:\.\d+)?)+＝？(?:（用小数作答）)?$"
+)
+PURE_ARITH_CHOICE_RE = re.compile(
+    r"^\d+(?:\.\d+)?(?:\s*[＋+\-－×*÷]\s*\d+(?:\.\d+)?)+ 的得数是哪一个？$"
+)
+CHALLENGE_BARE_CALC_RE = re.compile(r"^计算：.*＝？")
+Q_ID_RE = re.compile(r"^((?:cnm_(?:p|h)?|cne_[pjh]|cnp_h?|cnc_p|cns_p|cnd_p|cnh_j|cng_j)\d{3,})_q([1-9]\d*)$")
 NUM_RE = re.compile(r"^-?\d+(?:\.\d+)?(?:/\d+(?:\.\d+)?)?$")
 MIN_QUESTIONS_PER_TOPIC = 3
 MIN_AUTO_SHARE = 0.60
@@ -905,12 +1181,12 @@ def question_errors(questions, topics_by_id, require_coverage=True):
         for f in ("difficulty", "type", "prompt", "answer", "explanation"):
             if not nonempty_str(q.get(f)):
                 errs.append("%s 字段 %s 缺失或为空（answer 必须是字符串）" % (w, f))
-        if is_english_id(tid) or is_chinese_id(tid):
+        if is_english_id(tid) or is_chinese_id(tid) or is_science_id(tid) or is_morality_id(tid) or is_history_id(tid) or is_geography_id(tid):
             problem = english_prompt_problem(q.get("prompt"))
             if problem:
                 errs.append("%s %s" % (w, problem))
         diff, typ = q.get("difficulty"), q.get("type")
-        if nonempty_str(diff) and diff not in Q_DIFFICULTIES:
+        if nonempty_str(diff) and diff not in Q_DIFFICULTIES and diff not in Q_DIFFICULTY_ALIASES:
             errs.append("%s difficulty 取值非法：%r" % (w, diff))
         if nonempty_str(typ) and typ not in Q_TYPES:
             errs.append("%s type 取值非法：%r" % (w, typ))
@@ -978,6 +1254,19 @@ def question_errors(questions, topics_by_id, require_coverage=True):
             ds = {q.get("difficulty") for q in qs}
             if qs and not {"basic", "standard"} <= ds:
                 errs.append("%s(%s) 的难度需至少含 basic 和 standard" % (tid, t.get("name")))
+            # 一至六年级数学：三档齐全；禁止与知识点无关的纯整数/小数四则；拓展不得直接「计算：…＝？」
+            if t.get("grade") in (1, 2, 3, 4, 5, 6) and str(tid).startswith("cnm_") and not (
+                    is_english_id(tid) or is_physics_id(tid) or is_chinese_id(tid)):
+                label = {1: "一", 2: "二", 3: "三", 4: "四", 5: "五", 6: "六"}[t.get("grade")]
+                if qs and ("standard" not in ds or "challenge" not in ds):
+                    errs.append("%s(%s) %s年级题库需至少含 1 道 standard 和 1 道 challenge" % (
+                        tid, t.get("name"), label))
+                for q in qs:
+                    p = str(q.get("prompt") or "").strip()
+                    if PURE_ARITH_PROMPT_RE.match(p) or PURE_ARITH_CHOICE_RE.match(p):
+                        errs.append("%s 是与知识点无关的纯整数或小数计算题" % q.get("id"))
+                    if q.get("difficulty") == "challenge" and CHALLENGE_BARE_CALC_RE.match(p):
+                        errs.append("%s challenge 题干不得直接「计算：…＝？」" % q.get("id"))
             q1 = [q for q in qs if q.get("id") == tid + "_q1"]
             dq = (t.get("diagnostic_question") or {}).get("question")
             if qs and not q1:
@@ -993,7 +1282,7 @@ def report_questions(stats, topics_by_id):
     counts = [stats["per_topic"].get(tid, 0) for tid in core]
     print("\n题库：共 %d 题" % stats["total"])
     print("按 type：" + "，".join("%s %d" % (k, stats["by_type"].get(k, 0)) for k in Q_TYPES))
-    print("按 difficulty：" + "，".join("%s %d" % (k, stats["by_difficulty"].get(k, 0)) for k in Q_DIFFICULTIES))
+    print("按 difficulty：" + "，".join("%s %d" % (k, stats["by_difficulty"].get(k, 0)) for k in Q_DIFFICULTIES + ("advanced",)))
     auto = stats["by_type"].get("numeric", 0) + stats["by_type"].get("choice", 0)
     if stats["total"]:
         print("numeric + choice 占比：%.1f%%" % (100.0 * auto / stats["total"]))
