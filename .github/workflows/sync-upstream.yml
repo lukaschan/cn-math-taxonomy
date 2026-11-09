@@ -10,7 +10,6 @@ on:
 
 permissions:
   contents: write
-  workflows: write
 
 concurrency:
   group: sync-upstream
@@ -36,11 +35,17 @@ jobs:
             echo "Already up to date with upstream."
             exit 0
           fi
-          if ! git merge upstream/main --no-edit; then
+          if ! git merge --no-commit --no-ff upstream/main; then
             git merge --abort || true
             echo "::error::Merge conflict with upstream — manual sync needed."
             exit 1
           fi
+          # GITHUB_TOKEN is refused when a push creates or updates files under
+          # .github/workflows/, so keep this fork's own workflow files and drop
+          # any workflow changes arriving from upstream before committing.
+          git restore --source=HEAD --staged --worktree -- .github/workflows/ || true
+          git add -A .github/workflows/
+          git commit --no-edit
           echo "changed=true" >> "$GITHUB_OUTPUT"
 
       - name: Validate before pushing
