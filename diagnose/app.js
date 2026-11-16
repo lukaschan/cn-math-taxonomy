@@ -215,8 +215,8 @@
       if (volSel === '全') volSel = '';
     }
     if (subject === 'chemistry') {
-      document.title = '诊断 · 初中化学';
-      if (gradeSel !== '九') gradeSel = '九';
+      document.title = '诊断 · 化学';
+      if (gradeSel !== '九' && !/^(必修[一二]|选必[一二三]|选择性必修第[一二三]册)$/.test(gradeSel)) gradeSel = '九';
       if (volSel === '全') volSel = '';
     }
     if (subject === 'chinese') {
@@ -262,7 +262,7 @@
     pathTipLock = false;
     if (pathCy) { pathCy.destroy(); pathCy = null; window.__pathCy = null; }
   }
-  function show(node) { teardownPath(); closeShare(); clearRoot(); root.append(node); window.scrollTo(0, 0); }
+  function show(node, keepScroll) { teardownPath(); closeShare(); clearRoot(); root.append(node); if (!keepScroll) window.scrollTo(0, 0); }
   function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
   function theme() {
     return {
@@ -311,10 +311,11 @@
       if (t.external) return;
       const c = E.parseChapter(t.chapter);
       const v = vols[c.volume] || (vols[c.volume] = { chapters: [], byKey: {} });
-      const key = c.chapterNo + ' ' + c.chapterName;
+      const nameParts = [c.chapterNo, c.chapterName].filter(Boolean);
+      const key = nameParts.join(' ');
       let ch = v.byKey[key];
       if (!ch) {
-        ch = v.byKey[key] = { volume: c.volume, key: c.volume + ' ' + c.chapterNo, label: c.chapterNo + ' ' + c.chapterName, topics: [] };
+        ch = v.byKey[key] = { volume: c.volume, key: c.volume + ' ' + c.chapterNo, label: nameParts.join(' '), topics: [] };
         v.chapters.push(ch);
       }
       ch.topics.push({ t: t, section: c.section });
@@ -395,6 +396,11 @@
       }
     }
     CC.saveRecord(cur.id, rec);
+  }
+  function wrongbookLink() {
+    if (!window.CnmWrong) return null;
+    const cur = CC.current();
+    return h('a', { class: 'btn', id: 'btn-wrongbook', href: '../wrongbook/', text: '错题本（' + window.CnmWrong.count(cur ? cur.id : 'guest') + '）' });
   }
   function noteBlind(sum) {
     if (demo || !sum || !sum.asked || !window.CnmBlind) return;
@@ -504,8 +510,32 @@
     render();
   }
 
+  /* 错题本收集：只在真实用户点了「下一题 / 对 / 不对 / 不会」后进来（commit 的所有调用点都是按钮）。
+   * 演示模式的模拟学生走 runDemo -> E.applyAnswer，不经过这里；这里再用 demo 标志兜底。 */
+  function collectWrong(item, result) {
+    if (demo || result === 'correct' || !window.CnmWrong) return;
+    const q = item.question;
+    if (!q || !q.id) return;
+    const cur = CC.current();
+    const skipped = result === 'skip';
+    window.CnmWrong.record({
+      childId: cur ? cur.id : 'guest',
+      qid: q.id,
+      topicId: item.topicId,
+      topic: nameOf(item.topicId),
+      subject: subject,
+      prompt: q.prompt,
+      choices: q.type === 'choice' && q.choices ? q.choices.map(function (c) { return { key: c.key, text: c.text || '' }; }) : null,
+      answer: answerText(q),
+      explanation: q.explanation || '',
+      chosen: skipped ? '' : (q.type === 'choice' ? answerOfKey(q, ui.answer) : String(ui.answer || '').trim()),
+      kind: skipped ? 'skip' : 'wrong'
+    });
+  }
+
   function commit(result) {
     const item = E.nextItem(D.graph, session);
+    collectWrong(item, result);
     session = E.applyAnswer(D.graph, session, item.topicId, result, { text: ui.answer, prompt: item.question.prompt });
     markSeen(item.question.id);
     resetUi();
@@ -644,14 +674,14 @@
         ? '选一个想学会或想检查的化学知识点。' + confirmHelp
         : '选一个想学会或想检查的知识点。' + confirmHelp),
       h('div', { class: 'stage-tabs', role: 'tablist', 'aria-label': '学段' },
-        subject === 'physics' ? [stageButton('', '全部'), stageButton('j', '初中'), stageButton('h', '高中')]
-          : subject === 'history' || subject === 'geography' || subject === 'biology' || subject === 'chemistry' ? [stageButton('', '全部'), stageButton('j', '初中')]
+        subject === 'physics' || subject === 'chemistry' ? [stageButton('', '全部'), stageButton('j', '初中'), stageButton('h', '高中')]
+          : subject === 'history' || subject === 'geography' || subject === 'biology' ? [stageButton('', '全部'), stageButton('j', '初中')]
           : subject === 'chinese' || subject === 'morality' ? [stageButton('', '全部'), stageButton('p', '小学'), stageButton('j', '初中')]
           : subject === 'science' ? [stageButton('', '全部'), stageButton('p', '小学')]
           : [stageButton('', '全部'), stageButton('p', '小学'), stageButton('j', '初中'), stageButton('h', '高中')]),
       h('input', {
         type: 'search', class: 'search-lg', id: 'search',
-        placeholder: subject === 'physics' ? '搜索知识点，例如：欧姆定律、浮力、牛顿第二定律、楞次定律' : subject === 'english' ? '搜索知识点，例如：现在进行时、虚拟语气、there is' : subject === 'chinese' ? '搜索知识点，例如：声母、静夜思、春、岳阳楼记' : subject === 'science' ? '搜索知识点，例如：溶解、电路、昼夜交替' : subject === 'morality' ? '搜索知识点，例如：升国旗、排队、宪法、节约用水' : subject === 'history' ? '搜索知识点，例如：鸦片战争、丝绸之路、五四运动' : subject === 'geography' ? '搜索知识点，例如：经纬网、季风气候、长江' : subject === 'biology' ? '搜索知识点，例如：细胞、光合作用、基因' : subject === 'chemistry' ? '搜索知识点，例如：氧气、质量守恒定律、酸碱盐' : '搜索知识点，例如：配方法、20 以内加法、一次函数',
+        placeholder: subject === 'physics' ? '搜索知识点，例如：欧姆定律、浮力、牛顿第二定律、楞次定律' : subject === 'english' ? '搜索知识点，例如：现在进行时、虚拟语气、there is' : subject === 'chinese' ? '搜索知识点，例如：声母、静夜思、春、岳阳楼记' : subject === 'science' ? '搜索知识点，例如：溶解、电路、昼夜交替' : subject === 'morality' ? '搜索知识点，例如：升国旗、排队、宪法、节约用水' : subject === 'history' ? '搜索知识点，例如：鸦片战争、丝绸之路、五四运动' : subject === 'geography' ? '搜索知识点，例如：经纬网、季风气候、长江' : subject === 'biology' ? '搜索知识点，例如：细胞、光合作用、基因' : subject === 'chemistry' ? '搜索知识点，例如：氧气、质量守恒定律、物质的量、氧化还原' : '搜索知识点，例如：配方法、20 以内加法、一次函数',
         value: startQuery, autocomplete: 'off', 'aria-label': '搜索知识点',
         oninput: function (e) {
           startQuery = e.target.value;
@@ -724,7 +754,7 @@
           : subject === 'geography' || subject === 'biology'
           ? '七八'.split('').map(function (x) { return [x, x + '年级']; })
           : subject === 'chemistry'
-          ? [['九', '九年级']]
+          ? [['九', '九年级'], ['必修一', '必修一'], ['必修二', '必修二'], ['选必一', '选必一'], ['选必二', '选必二'], ['选必三', '选必三']]
           : subject === 'chinese'
           ? '一二三四五六七八九'.split('').map(function (x) { return [x, x + '年级']; })
           : subject === 'science'
@@ -800,7 +830,7 @@
       shown += count;
       const openVol = subject === 'physics' ? '八上' : subject === 'english' ? '三上' : subject === 'chemistry' ? '九上' : subject === 'history' || subject === 'geography' || subject === 'biology' ? '七上' : '一上';
       const juniorOpen = subject === 'chemistry' ? '九上' : '七上';
-      const seniorOpen = subject === 'english' || subject === 'physics' ? '必修一' : '高一';
+      const seniorOpen = subject === 'english' || subject === 'physics' || subject === 'chemistry' ? '必修一' : '高一';
       const det = h('details', { class: 'vol', open: !!q || (startStage === 'j' ? vv[0] === juniorOpen : startStage === 'h' ? vv[0] === seniorOpen : vv[0] === openVol) },
         h('summary', null, vv[1] + '（' + count + ' 个知识点）'));
       chapters.forEach(function (c) {
@@ -907,7 +937,8 @@
     const q = item.question;
     const t = D.graph.byId[id];
     const key = id + '#' + item.attempt;
-    if (ui.key !== key) ui = { key: key, phase: 'ask', answer: '', verdict: null, picked: null };
+    const isNewQuestion = ui.key !== key;
+    if (isNewQuestion) ui = { key: key, phase: 'ask', answer: '', verdict: null, picked: null };
     const n = session.answers.length;
     const card = h('div', { class: 'card' });
     card.append(
@@ -930,6 +961,7 @@
       if (qt) qt.insertAdjacentElement('afterend', stemFig);
     }
 
+    const resultStart = card.children.length;
     if (ui.phase === 'ask') {
       if (q.type === 'choice') {
         card.append(h('div', { class: 'choices' + (q.hideChoiceText ? ' fig-icons' : ''), id: 'choices' }, (q.choices || []).map(function (c) {
@@ -942,7 +974,11 @@
             class: 'choice' + (c.figure ? ' fig-choice' : '') + (ui.picked === c.key ? ' picked' : ''),
             id: 'choice-' + c.key, 'data-key': c.key,
             'aria-label': hideName ? ('选项 ' + c.key) : null,
-            onclick: function () { ui.picked = c.key; ui.answer = c.key; renderQuestion(item); }
+            onclick: function (e) {
+              ui.picked = c.key; ui.answer = c.key;
+              const box = e.currentTarget.parentNode;
+              Array.prototype.forEach.call(box.querySelectorAll('.choice'), function (b) { b.classList.toggle('picked', b.getAttribute('data-key') === c.key); });
+            }
           }, kids);
         })));
       } else if (q.type === 'self') {
@@ -957,7 +993,7 @@
           onkeydown: function (e) { if (e.key === 'Enter' && !e.isComposing) judgeAndGo(item); }
         }));
       }
-      card.append(h('div', { class: 'row', style: 'margin-top:10px' },
+      card.append(h('div', { class: 'row actions-sticky', style: 'margin-top:10px' },
         q.type === 'self' ? null : h('button', { class: 'primary', id: 'btn-submit', onclick: function () { judgeAndGo(item); } }, '提交答案'),
         q.type === 'choice' ? null : h('button', { id: 'btn-peek', onclick: function () { ui.phase = 'self'; ui.verdict = null; renderQuestion(item); } }, '看参考答案并自评'),
         h('button', { id: 'btn-skip', onclick: function () { ui.phase = 'skip'; renderQuestion(item); } }, '不会')));
@@ -967,7 +1003,7 @@
         h('div', { class: 'muted' }, '你的答案：' + (q.type === 'choice' ? answerOfKey(q, ui.answer) : ui.answer)),
         h('div', { class: 'verdict ' + (ok ? 'ok' : 'no') }, ok ? '自动判定：正确' : '自动判定：不正确'),
         feedbackBlock(q),
-        h('div', { class: 'row' },
+        h('div', { class: 'row actions-sticky' },
           h('button', { class: 'primary', id: 'btn-next', onclick: function () { commit(ok ? 'correct' : 'wrong'); } }, '下一题'),
           h('button', { id: 'btn-flip', onclick: function () { commit(ok ? 'wrong' : 'correct'); } }, ok ? '判错了，我其实没做对' : '判错了，我其实做对了'),
           h('button', { onclick: function () { ui.phase = 'ask'; renderQuestion(item); } }, '重新作答')));
@@ -975,14 +1011,14 @@
       card.append(
         h('div', { class: 'muted' }, '你选择了「不会」。看一下答案和解析再继续：'),
         feedbackBlock(q),
-        h('div', { class: 'row' }, h('button', { class: 'primary', id: 'btn-next', onclick: function () { commit('skip'); } }, '下一题')));
+        h('div', { class: 'row actions-sticky' }, h('button', { class: 'primary', id: 'btn-next', onclick: function () { commit('skip'); } }, '下一题')));
     } else {
       card.append(
-        ui.answer ? h('div', { class: 'muted' }, '你的答案：' + ui.answer) : null,
+        ui.answer ? h('div', { class: 'muted' }, '你的答案：' + ui.answer) : '',
         q.type === 'self' ? h('div', { class: 'muted' }, '开放题：请对照参考答案自己判断。')
-          : (ui.verdict ? h('div', { class: 'muted' }, '这道题的答案无法被自动可靠地判定，请对照参考答案自己判断。') : null),
+          : (ui.verdict ? h('div', { class: 'muted' }, '这道题的答案无法被自动可靠地判定，请对照参考答案自己判断。') : ''),
         feedbackBlock(q),
-        h('div', { class: 'row' },
+        h('div', { class: 'row actions-sticky' },
           h('button', { class: 'good', id: 'btn-right', onclick: function () { commit('correct'); } }, '对（我做对了）'),
           h('button', { class: 'bad', id: 'btn-wrong', onclick: function () { commit('wrong'); } }, '不对'),
           h('button', { id: 'btn-skip2', onclick: function () { commit('skip'); } }, '不会')));
@@ -996,10 +1032,18 @@
     if (demo) page.append(demoBanner());
     page.append(childBar('question'));
     page.append(card);
-    show(page);
+    show(page, !isNewQuestion);
     const inp = document.getElementById('ans');
-    if (inp && inp.setSelectionRange && inp.tagName === 'INPUT') { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
-    else if (inp) inp.focus();
+    const focusOpts = { preventScroll: !isNewQuestion };
+    if (inp && inp.setSelectionRange && inp.tagName === 'INPUT') { inp.focus(focusOpts); inp.setSelectionRange(inp.value.length, inp.value.length); }
+    else if (inp) inp.focus(focusOpts);
+    const resultEl = ui.phase === 'ask' ? null : card.children[resultStart];
+    if (resultEl && !isNewQuestion) {
+      const header = document.querySelector('.site-header');
+      resultEl.style.scrollMarginTop = ((header ? header.offsetHeight : 0) + 12) + 'px';
+      const calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      resultEl.scrollIntoView({ behavior: calm ? 'auto' : 'smooth', block: 'start' });
+    }
   }
 
   function answerOfKey(q, key) {
@@ -1217,6 +1261,7 @@
         h('button', { class: 'primary', id: 'btn-share', onclick: openShare }, '生成分享图'),
         h('button', { id: 'btn-export', onclick: exportJson }, '导出 JSON'),
         h('button', { id: 'btn-print', onclick: printPage }, '打印 / 另存为 PDF'),
+        wrongbookLink(),
         h('button', { onclick: function () { if (confirm('重新开始会清除当前进度，确定吗？')) restart(); } }, '重新开始'),
         session.answers.length ? h('button', { onclick: function () { rebuild(session.answers.slice(0, -1)); } }, '撤销上一题') : null));
     page.append(summaryCard);
@@ -1342,7 +1387,7 @@
         : subject === 'science'
         ? '目标与学习路径上的知识点对应的《义务教育科学课程标准（2022年版）》第一至第三学段学习内容的公开转述。'
         : subject === 'morality'
-        ? '目标与学习路径上的知识点对应的《义务教育道德与法治课程标准（2022年版）》第一至第三学段内容要求的公开转述；初中第四学段目前仅作主题推断，非逐字课标原文，页码待核。只覆盖已录入册次，初中尚未全部覆盖，不含高中。'
+        ? '目标与学习路径上的知识点对应的《义务教育道德与法治课程标准（2022年版）》第一至第三学段内容要求的公开转述；初中第四学段目前仅作主题推断，非逐字课标原文，页码待核。七至九年级上册已按官方目录录入，九下未建，不含高中。'
         : subject === 'history'
         ? '目标与学习路径上的知识点对应的《义务教育历史课程标准（2022年版）》第四学段内容要求的公开转述。'
         : subject === 'geography'
@@ -1350,7 +1395,7 @@
         : subject === 'biology'
         ? '目标与学习路径上的知识点对应的《义务教育生物学课程标准（2022年版）》第四学段内容要求的公开转述。'
         : subject === 'chemistry'
-        ? '目标与学习路径上的知识点对应的《义务教育化学课程标准（2022年版）》五个学习主题内容要求的公开转述。'
+        ? '目标与学习路径上的知识点对应的《义务教育化学课程标准（2022年版）》五个学习主题，以及《普通高中化学课程标准（2017年版）》必修第一册、必修第二册、选择性必修第一册、选择性必修第二册、选择性必修第三册相关内容要求的公开转述。'
         : '目标与学习路径上的知识点对应的《义务教育数学课程标准（2022年版）》内容要求（第一至第四学段）。'),
       keys.length ? keys.map(function (k) {
         const item = D.stdById[k];
@@ -1405,6 +1450,7 @@
     }
     if (grade >= 1 && grade <= 9) return cn[grade] + '年级';
     if (subject === 'physics') return { 10: '必修一', 11: '必修二', 12: '必修三', 13: '选必一', 14: '选必二', 15: '选必三' }[grade] || ('册' + grade);
+    if (subject === 'chemistry') return { 10: '必修一', 11: '必修二', 12: '选必一', 13: '选必二', 14: '选必三' }[grade] || ('册' + grade);
     const math = { 10: '高一', 11: '高二', 12: '选必一', 13: '选必二', 14: '选必三' };
     return math[grade] || ('年级' + grade);
   }
@@ -1765,6 +1811,8 @@
             ? '高中英语不拆上下册：' + grade + ' / ' + volume + '（用 grade=必修一 或 grade=选必一）'
             : subject === 'physics'
             ? '高中物理不拆上下册：' + grade + ' / ' + volume + '（用 grade=必修一 或 grade=选必一）'
+            : subject === 'chemistry'
+            ? '高中化学不拆上下册：' + grade + ' / ' + volume + '（用 grade=必修一、grade=必修二、grade=选必一、grade=选必二 或 grade=选必三）'
             : '高中不拆上下册：' + grade + ' / ' + volume + '（用 grade=高一、grade=高二 或 grade=选必二）');
         }
         scope = seniorUrl[grade];
