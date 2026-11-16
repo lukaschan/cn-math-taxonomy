@@ -36,9 +36,25 @@ jobs:
             exit 0
           fi
           if ! git merge --no-commit --no-ff upstream/main; then
-            git merge --abort || true
-            echo "::error::Merge conflict with upstream — manual sync needed."
-            exit 1
+            # Conflicts confined to .github/workflows/ are expected: this
+            # fork drops upstream's workflow files (GITHUB_TOKEN cannot
+            # push them), so an upstream edit to a dropped file clashes
+            # with its absence here (modify/delete). Resolve each such
+            # path in this fork's favour and continue; any other
+            # conflict still stops the sync for a manual fix.
+            conflicts="$(git diff --name-only --diff-filter=U)"
+            if [ -z "$conflicts" ] || [ -n "$(printf '%s\n' "$conflicts" | grep -v '^\.github/workflows/')" ]; then
+              git merge --abort || true
+              echo "::error::Merge conflict with upstream — manual sync needed."
+              exit 1
+            fi
+            printf '%s\n' "$conflicts" | while IFS= read -r path; do
+              if git cat-file -e "HEAD:$path" 2>/dev/null; then
+                git checkout HEAD -- "$path"
+              else
+                git rm -f -- "$path"
+              fi
+            done
           fi
           # GITHUB_TOKEN is refused when a push creates or updates files under
           # .github/workflows/, so keep this fork's own workflow files and drop
